@@ -207,16 +207,18 @@ Proof. reflexivity. Qed.
    [X] (inclusive -- i.e., [1 + 2 + ... + X]) in the variable [Y].  Make
    sure your solution satisfies the test that follows. *)
 
-Definition pup_to_n : com
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition pup_to_n : com := <{
+  Y := 0;
+  while X > 0 do
+    Y := Y + X;
+    X := X - 1
+  end
+}>.
 
 Example pup_to_n_1 :
   test_ceval (X !-> 5) pup_to_n
   = Some (0, 15, 0).
-(* FILL IN HERE *) Admitted.
-(* 
 Proof. reflexivity. Qed.
-*)
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (peven)
@@ -224,10 +226,18 @@ Proof. reflexivity. Qed.
     Write an [Imp] program that sets [Z] to [0] if [X] is even and
     sets [Z] to [1] otherwise.  Use [test_ceval] to test your
     program. *)
+Definition peven : com := <{
+  while 2 <= X do
+    X := X - 2
+  end;
+  Z := X
+}>.
 
-(* FILL IN HERE
+Example peven_3 : test_ceval (X !-> 3) peven = Some (1, 0, 1).
+Proof. reflexivity. Qed.
 
-    [] *)
+Example peven_4 : test_ceval (X !-> 4) peven = Some (0, 0, 0).
+Proof. reflexivity. Qed.
 
 (* ################################################################# *)
 (** * Relational vs. Step-Indexed Evaluation *)
@@ -360,7 +370,20 @@ Theorem ceval__ceval_step: forall c st st',
 Proof.
   intros c st st' Hce.
   induction Hce.
-  (* FILL IN HERE *) Admitted.
+  - exists 1. reflexivity.
+  - exists 1. simpl. rewrite H. reflexivity.
+  - destruct IHHce1 as [i1 Hc1]. destruct IHHce2 as [i2 Hc2].
+    exists (S (i1 + i2)). simpl.
+    apply (ceval_step_more _ (i1 + i2)) in Hc1; [| lia]. rewrite Hc1.
+    apply (ceval_step_more i2); [lia |]. assumption.
+  - destruct IHHce as [i Hc]. exists (S i). simpl. rewrite H. exact Hc.
+  - destruct IHHce as [i Hc]. exists (S i). simpl. rewrite H. exact Hc.
+  - exists 1. simpl. rewrite H. reflexivity.
+  - destruct IHHce1 as [i1 Hc1]. destruct IHHce2 as [i2 Hc2].
+    exists (S (i1 + i2)). simpl. rewrite H.
+    apply (ceval_step_more _ (i1 + i2)) in Hc1; [| lia]. rewrite Hc1.
+    apply (ceval_step_more i2); [lia |]. exact Hc2.
+Qed.
 (** [] *)
 
 Theorem ceval_and_ceval_step_coincide: forall c st st',
