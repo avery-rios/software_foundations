@@ -2434,7 +2434,7 @@ Inductive com : Type :=
 | CSeq (c1 c2 : com)
 | CIf (b : bexp) (c1 c2 : com)
 | CWhile (b : bexp) (c : com)
-| CFor (i : com) (b : bexp) (c : com).
+| CFor (i : com) (b : bexp) (c : com) (u : com).
 
 Inductive ceval : com -> state -> state -> Prop :=
 | E_Skip : forall st,
@@ -2462,10 +2462,10 @@ Inductive ceval : com -> state -> state -> Prop :=
     st  =[ c ]=> st' ->
     st' =[ CWhile b c ]=> st'' ->
     st  =[ CWhile b c ]=> st''
-| E_For : forall st st' st'' i b c,
+| E_For : forall st st' st'' i b c u,
     st =[ i ]=> st' ->
-    st' =[ CWhile b c ]=> st'' ->
-    st =[ CFor i b c ]=> st''
+    st' =[ CWhile b (CSeq c u) ]=> st'' ->
+    st =[ CFor i b c u ]=> st''
 
 where "st =[ c ]=> st'" := (ceval c st st').
 
@@ -2499,7 +2499,7 @@ Proof.
   - (* E_WhileTrue, b evaluates to true *)
     rewrite (IHE1_1 st'0 H3) in *.
     apply IHE1_2. assumption.
-  - apply (IHE1_1 _) in H4. rewrite H4 in *.
+  - apply (IHE1_1 _) in H5. rewrite H5 in *.
     apply IHE1_2. assumption.
 Qed.
 End ForImp.

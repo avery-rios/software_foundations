@@ -2140,7 +2140,7 @@ Inductive com : Type :=
 | CSeq (c1 c2 : com)
 | CIf (b : bexp) (c1 c2 : com)
 | CWhile (b : bexp) (c : com)
-| CFor (i : com) (b : bexp) (c : com).
+| CFor (i : com) (b : bexp) (c : com) (u: com).
 
 Inductive ceval : com -> state -> state -> Prop :=
 | E_Skip : forall st,
@@ -2168,20 +2168,20 @@ Inductive ceval : com -> state -> state -> Prop :=
     st  =[ c ]=> st' ->
     st' =[ CWhile b c ]=> st'' ->
     st  =[ CWhile b c ]=> st''
-| E_For : forall st st' st'' i b c,
+| E_For : forall st st' st'' i b c u,
     st =[ i ]=> st' ->
-    st' =[ CWhile b c ]=> st'' ->
-    st =[ CFor i b c ]=> st''
+    st' =[ CWhile b (CSeq c u) ]=> st'' ->
+    st =[ CFor i b c u ]=> st''
 
 where "st =[ c ]=> st'" := (ceval c st st').
 
 Definition cequiv (c1 c2 : com) : Prop := forall st st' : state,
   st =[ c1 ]=> st' <-> st =[ c2 ]=> st'.
 
-Theorem for_while_equiv : forall i b c, 
-  cequiv (CFor i b c) (CSeq i (CWhile b c)).
+Theorem for_while_equiv : forall i b c u, 
+  cequiv (CFor i b c u) (CSeq i (CWhile b (CSeq c u))).
 Proof.
-  intros i b c st st'. split; intros H.
+  intros i b c u st st'. split; intros H.
   - inversion H; subst. apply E_Seq with st'0; assumption.
   - inversion H; subst. apply E_For with st'0; assumption.
 Qed.
