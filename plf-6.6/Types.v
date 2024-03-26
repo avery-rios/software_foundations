@@ -200,7 +200,12 @@ Hint Unfold stuck : core.
 Example some_term_is_stuck :
   exists t, stuck t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  exists (scc fls). split.
+  - intros [t1 H]. inversion H. subst. inversion H1.
+  - intros [H | H].
+    + inversion H.
+    + inversion H. inversion H1.
+Qed.
 (** [] *)
 
 (** However, although values and normal forms are _not_ the same in this
@@ -213,7 +218,13 @@ Proof.
 Lemma value_is_nf : forall t,
   value t -> step_normal_form t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros t [Hv | Hv].
+  - destruct Hv; intros [t1 Hv]; inversion Hv.
+  - induction Hv.
+    + intros [t1 Hv]. inversion Hv.
+    + intros [t1 Hv1]. apply IHHv. inversion Hv1. subst.
+      exists t1'. assumption.
+Qed.
 
 (** (Hint: You will reach a point in this proof where you need to
     use an induction to reason about a term that is known to be a
@@ -233,7 +244,21 @@ Proof.
 Theorem step_deterministic:
   deterministic step.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  assert (nf_nvalue : forall v t1, nvalue v -> ~ (v --> t1)).
+    { intros v t1 Hv He. apply (value_is_nf v).
+      - right. apply Hv.
+      - exists t1. apply He. }
+  intros x y1 y2 H. generalize dependent y2.
+  induction H; intros y2 Hy2;
+    (inversion Hy2; subst; try solve_by_invert);
+    try reflexivity;
+    try solve [f_equal; apply IHstep; assumption]; (* congruence rule *)
+    exfalso.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc y2) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -340,7 +365,8 @@ Example succ_hastype_nat__hastype_nat : forall t,
   |-- <{succ t}> \in Nat ->
   |-- t \in Nat.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros t Ht. inversion Ht. assumption.
+Qed.
 (** [] *)
 
 (* ----------------------------------------------------------------- *)
@@ -401,7 +427,23 @@ Proof.
     + (* t1 can take a step *)
       destruct H as [t1' H1].
       exists (<{ if t1' then t2 else t3 }>). auto.
-  (* FILL IN HERE *) Admitted.
+  - (* T_Succ *)
+    destruct IHHT.
+    + left. right. apply nv_succ. apply nat_canonical; assumption.
+    + right. destruct H as [t' He]. exists (<{ succ t'}>). auto.
+  - (* T_Pred *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists zro. apply ST_Pred0.
+      * exists t. apply ST_PredSucc. apply H.
+    + destruct H as [t1' H1]. exists <{ pred t1' }>. apply ST_Pred. apply H1.
+  - (* T_Iszero *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists tru. apply ST_Iszero0.
+      * exists fls. apply ST_IszeroSucc. assumption.
+    + destruct H as [t1' H1]. exists <{ iszero t1' }>. apply ST_Iszero. apply H1.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (finish_progress_informal)
@@ -446,6 +488,13 @@ Definition manual_grade_for_finish_progress_informal : option (nat*string) := No
 (** The second critical property of typing is that, when a well-typed
     term takes a step, the result is a well-typed term (of the same type). *)
 
+Lemma nvalue_nat : forall v, nvalue v -> |-- v \in Nat.
+Proof.
+  intros v H. induction H.
+  - apply T_0.
+  - apply T_Succ. apply IHnvalue.
+Qed.
+
 (** **** Exercise: 2 stars, standard (finish_preservation) *)
 Theorem preservation : forall t t' T,
   |-- t \in T ->
@@ -470,7 +519,16 @@ Proof.
       + (* ST_IfFalse *) assumption.
       + (* ST_If *) apply T_If; try assumption.
         apply IHHT1; assumption.
-    (* FILL IN HERE *) Admitted.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply T_0.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (finish_preservation_informal)
@@ -521,7 +579,24 @@ Theorem preservation' : forall t t' T,
   t --> t' ->
   |-- t' \in T.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  intros t t' T HT H. generalize dependent T.
+  induction H; intros T HT.
+  - (* ST_IfTrue *) inversion HT; subst. assumption.
+  - (* ST_IfFalse *) inversion HT; subst. assumption.
+  - (* ST_If *) inversion HT; subst. apply T_If.
+    + apply IHstep. assumption.
+    + assumption.
+    + assumption.
+  - (* ST_Succ *) inversion HT; subst. apply T_Succ. apply IHstep. assumption.
+  - (* ST_Pred0 *) inversion HT; subst. apply T_0.
+  - (* ST_PredSucc *) inversion HT; subst. apply nvalue_nat. assumption.
+  - (* ST_Pred *) inversion HT; subst. apply T_Pred.
+    apply IHstep. assumption.
+  - (* ST_Iszero0 *) inversion HT; subst. apply T_True.
+  - (* ST_IszeroSucc *) inversion HT; subst. apply T_False.
+  - (* ST_Iszero *) inversion HT; subst. apply T_Iszero.
+    apply IHstep. assumption.
+Qed.
 (** [] *)
 
 (** The preservation theorem is often called _subject reduction_,
@@ -570,7 +645,14 @@ Theorem subject_expansion:
   \/
   ~ (forall t t' T, t --> t' /\ |-- t' \in T -> |-- t \in T).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros contra.
+  specialize (contra 
+    <{ if true then 0 else false}>
+    <{ 0 }>
+    Nat
+    (conj (ST_IfTrue _ _) T_0)).
+  inversion contra; subst. inversion H5.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (variation1)
@@ -586,12 +668,95 @@ Proof.
    else "becomes false." If a property becomes false, give a
    counterexample.
       - Determinism of [step]
-            (* FILL IN HERE *)
+            (* remains true *)
       - Progress
-            (* FILL IN HERE *)
+            (* becomes false *)
       - Preservation
-            (* FILL IN HERE *)
+            (* remains true *)
 *)
+
+Module Variation1.
+
+Reserved Notation "'|--' t '\in' T" (at level 40).
+
+Inductive has_type : tm -> ty -> Prop :=
+  | T_True :
+       |-- <{ true }> \in Bool
+  | T_False :
+       |-- <{ false }> \in Bool
+  | T_If : forall t1 t2 t3 T,
+       |-- t1 \in Bool ->
+       |-- t2 \in T ->
+       |-- t3 \in T ->
+       |-- <{ if t1 then t2 else t3 }> \in T
+  | T_0 :
+       |-- <{ 0 }> \in Nat
+  | T_Succ : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ succ t1 }> \in Nat
+  | T_Pred : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ pred t1 }> \in Nat
+  | T_Iszero : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ iszero t1 }> \in Bool
+  | T_SuccBool : forall t,
+           |-- t \in Bool ->
+           |-- <{ succ t }> \in Bool
+
+where "'|--' t '\in' T" := (has_type t T).
+
+Theorem step_deterministic':
+  deterministic step.
+Proof.
+  exact step_deterministic.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros contra.
+  destruct (contra <{ succ false }> Bool (T_SuccBool _ T_False)).
+  - destruct H.
+    + inversion H.
+    + inversion H. inversion H1.
+  - destruct H as [t1 He]. inversion He; subst. inversion H0.
+Qed.
+
+Lemma nvalue_nat : forall v, nvalue v -> |-- v \in Nat.
+Proof.
+  intros v H. induction H.
+  - apply T_0.
+  - apply T_Succ. apply IHnvalue.
+Qed.
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT. generalize dependent t'.
+  induction HT; intros t' HE; try solve_by_invert.
+  - (* T_If *) inversion HE; subst.
+    + assumption.
+    + assumption.
+    + apply T_If; auto.
+  - (* T_Succ *) inversion HE; subst. apply T_Succ.
+    apply IHHT. assumption.
+  - (* T_Pred *) inversion HE; subst.
+    + apply T_0.
+    + apply nvalue_nat. assumption.
+    + apply T_Pred. apply IHHT. assumption.
+  - (* T_Iszero *) inversion HE; subst.
+    + apply T_True.
+    + apply T_False.
+    + apply T_Iszero. apply IHHT. assumption.
+  - (* T_SuccBool *) inversion HE; subst.
+    apply T_SuccBool. apply IHHT. assumption.
+Qed.
+
+End Variation1.
 (* Do not modify the following line: *)
 Definition manual_grade_for_variation1 : option (nat*string) := None.
 (** [] *)
@@ -605,8 +770,121 @@ Definition manual_grade_for_variation1 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-            (* FILL IN HERE *)
 *)
+
+Module Variation2.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_IfTrue : forall t1 t2,
+      <{ if true then t1 else t2 }> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{ if false then t1 else t2 }> --> t2
+  | ST_If : forall c c' t2 t3,
+      c --> c' ->
+      <{ if c then t2 else t3 }> --> <{ if c' then t2 else t3 }>
+  | ST_Succ : forall t1 t1',
+      t1 --> t1' ->
+      <{ succ t1 }> --> <{ succ t1' }>
+  | ST_Pred0 :
+      <{ pred 0 }> --> <{ 0 }>
+  | ST_PredSucc : forall v,
+      nvalue v ->
+      <{ pred (succ v) }> --> v
+  | ST_Pred : forall t1 t1',
+      t1 --> t1' ->
+      <{ pred t1 }> --> <{ pred t1' }>
+  | ST_Iszero0 :
+      <{ iszero 0 }> --> <{ true }>
+  | ST_IszeroSucc : forall v,
+       nvalue v ->
+      <{ iszero (succ v) }> --> <{ false }>
+  | ST_Iszero : forall t1 t1',
+      t1 --> t1' ->
+      <{ iszero t1 }> --> <{ iszero t1' }>
+  | ST_Funny1 : forall t2 t3,
+           (<{ if true then t2 else t3 }>) --> t3
+
+where "t '-->' t'" := (step t t').
+
+Theorem step_not_deterministic : ~ deterministic step.
+Proof.
+  intros H.
+  discriminate (H
+    <{ if true then true else false }>
+    <{ true }> <{ false }>
+    (ST_IfTrue _ _)
+    (ST_Funny1 _ _)).
+Qed.
+
+Theorem progress : forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros t T HT.
+  induction HT; auto.
+  - (* T_If *)
+    right. destruct IHHT1.
+    + (* t1 is a value *)
+    apply (bool_canonical t1 HT1) in H.
+    destruct H.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + (* t1 can take a step *)
+      destruct H as [t1' H1].
+      exists (<{ if t1' then t2 else t3 }>). apply ST_If. assumption.
+  - (* T_Succ *)
+    destruct IHHT.
+    + left. right. apply nv_succ. apply nat_canonical; assumption.
+    + right. destruct H as [t' He].
+    exists (<{ succ t'}>). apply ST_Succ. assumption.
+  - (* T_Pred *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists zro. apply ST_Pred0.
+      * exists t. apply ST_PredSucc. apply H.
+    + destruct H as [t1' H1]. exists <{ pred t1' }>. apply ST_Pred. apply H1.
+  - (* T_Iszero *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists tru. apply ST_Iszero0.
+      * exists fls. apply ST_IszeroSucc. assumption.
+    + destruct H as [t1' H1]. exists <{ iszero t1' }>. apply ST_Iszero. apply H1.
+Qed.
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT HE.
+  generalize dependent t'.
+  induction HT;
+         (* every case needs to introduce a couple of things *)
+         intros t' HE;
+         (* and we can deal with several impossible
+            cases all at once *)
+         try solve_by_invert.
+    - (* T_If *) inversion HE; subst; clear HE.
+      + (* ST_IFTrue *) assumption.
+      + (* ST_IfFalse *) assumption.
+      + (* ST_If *) apply T_If; try assumption.
+        apply IHHT1; assumption.
+      + (* ST_Funny1 *) assumption.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply T_0.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.
+
+End Variation2.
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_variation2 : option (nat*string) := None.
 (** [] *)
@@ -621,9 +899,128 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-            (* FILL IN HERE *)
 *)
+
+Module Variation3.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_IfTrue : forall t1 t2,
+      <{ if true then t1 else t2 }> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{ if false then t1 else t2 }> --> t2
+  | ST_If : forall c c' t2 t3,
+      c --> c' ->
+      <{ if c then t2 else t3 }> --> <{ if c' then t2 else t3 }>
+  | ST_Succ : forall t1 t1',
+      t1 --> t1' ->
+      <{ succ t1 }> --> <{ succ t1' }>
+  | ST_Pred0 :
+      <{ pred 0 }> --> <{ 0 }>
+  | ST_PredSucc : forall v,
+      nvalue v ->
+      <{ pred (succ v) }> --> v
+  | ST_Pred : forall t1 t1',
+      t1 --> t1' ->
+      <{ pred t1 }> --> <{ pred t1' }>
+  | ST_Iszero0 :
+      <{ iszero 0 }> --> <{ true }>
+  | ST_IszeroSucc : forall v,
+       nvalue v ->
+      <{ iszero (succ v) }> --> <{ false }>
+  | ST_Iszero : forall t1 t1',
+      t1 --> t1' ->
+      <{ iszero t1 }> --> <{ iszero t1' }>
+  | ST_Funny2 : forall t1 t2 t2' t3,
+      t2 --> t2' ->
+      (<{ if t1 then t2 else t3 }>) --> (<{ if t1 then t2' else t3 }>)
+
+where "t '-->' t'" := (step t t').
+
+Theorem step_not_deterministic : ~ deterministic step.
+Proof.
+  intros H.
+  specialize (H
+    <{ if true then iszero 0 else false }>
+    <{ iszero 0 }>
+    <{ if true then true else false}>
+    (ST_IfTrue _ _)
+    (ST_Funny2 _ _ _ _ ST_Iszero0)).
+  discriminate H.
+Qed.
 (** [] *)
+
+Theorem progress : forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros t T HT.
+  induction HT; auto.
+  (* The cases that were obviously values, like T_True and
+     T_False, are eliminated immediately by auto *)
+  - (* T_If *)
+    right. destruct IHHT1.
+    + (* t1 is a value *)
+    apply (bool_canonical t1 HT1) in H.
+    destruct H.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + (* t1 can take a step *)
+      destruct H as [t1' H1].
+      exists (<{ if t1' then t2 else t3 }>). apply ST_If. assumption.
+  - (* T_Succ *)
+    destruct IHHT.
+    + left. right. apply nv_succ. apply nat_canonical; assumption.
+    + right. destruct H as [t' He].
+    exists (<{ succ t'}>). apply ST_Succ. assumption.
+  - (* T_Pred *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists zro. apply ST_Pred0.
+      * exists t. apply ST_PredSucc. apply H.
+    + destruct H as [t1' H1]. exists <{ pred t1' }>. apply ST_Pred. apply H1.
+  - (* T_Iszero *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists tru. apply ST_Iszero0.
+      * exists fls. apply ST_IszeroSucc. assumption.
+    + destruct H as [t1' H1]. exists <{ iszero t1' }>. apply ST_Iszero. apply H1.
+Qed.
+(** [] *)
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT HE.
+  generalize dependent t'.
+  induction HT;
+         (* every case needs to introduce a couple of things *)
+         intros t' HE;
+         (* and we can deal with several impossible
+            cases all at once *)
+         try solve_by_invert.
+    - (* T_If *) inversion HE; subst; clear HE.
+      + (* ST_IFTrue *) assumption.
+      + (* ST_IfFalse *) assumption.
+      + (* ST_If *) apply T_If; try assumption.
+        apply IHHT1; assumption.
+      + apply T_If; auto.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply T_0.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.    
+(** [] *)
+
+End Variation3.
 
 (** **** Exercise: 2 stars, standard, optional (variation4)
 
@@ -634,8 +1031,140 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-(* FILL IN HERE *)
 *)
+
+Module Variation4.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_IfTrue : forall t1 t2,
+      <{ if true then t1 else t2 }> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{ if false then t1 else t2 }> --> t2
+  | ST_If : forall c c' t2 t3,
+      c --> c' ->
+      <{ if c then t2 else t3 }> --> <{ if c' then t2 else t3 }>
+  | ST_Succ : forall t1 t1',
+      t1 --> t1' ->
+      <{ succ t1 }> --> <{ succ t1' }>
+  | ST_Pred0 :
+      <{ pred 0 }> --> <{ 0 }>
+  | ST_PredSucc : forall v,
+      nvalue v ->
+      <{ pred (succ v) }> --> v
+  | ST_Pred : forall t1 t1',
+      t1 --> t1' ->
+      <{ pred t1 }> --> <{ pred t1' }>
+  | ST_Iszero0 :
+      <{ iszero 0 }> --> <{ true }>
+  | ST_IszeroSucc : forall v,
+       nvalue v ->
+      <{ iszero (succ v) }> --> <{ false }>
+  | ST_Iszero : forall t1 t1',
+      t1 --> t1' ->
+      <{ iszero t1 }> --> <{ iszero t1' }>
+  | ST_Funny3 :
+      <{pred false}> --> <{ pred (pred false)}>
+
+where "t '-->' t'" := (step t t').
+
+Theorem step_deterministic:
+  deterministic step.
+Proof with eauto.
+  assert (nf_nvalue : forall v t1, nvalue v -> ~ (v --> t1)).
+    { intros v t1 Hv. generalize dependent t1.
+      induction Hv; intros t1 He.
+      - inversion He.
+      - inversion He; subst. apply (IHHv t1'). assumption. }
+  intros x y1 y2 H. generalize dependent y2.
+  induction H; intros y2 Hy2;
+    (inversion Hy2; subst; try solve_by_invert);
+    try reflexivity;
+    try solve [f_equal; apply IHstep; assumption]; (* congruence rule *)
+    exfalso.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc y2) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+Qed.
+
+Theorem progress : forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+
+(** Complete the formal proof of the [progress] property.  (Make sure
+    you understand the parts we've given of the informal proof in the
+    following exercise before starting -- this will save you a lot of
+    time.) *)
+Proof.
+  intros t T HT.
+  induction HT; auto.
+  (* The cases that were obviously values, like T_True and
+     T_False, are eliminated immediately by auto *)
+  - (* T_If *)
+    right. destruct IHHT1.
+    + (* t1 is a value *)
+    apply (bool_canonical t1 HT1) in H.
+    destruct H.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + (* t1 can take a step *)
+      destruct H as [t1' H1].
+      exists (<{ if t1' then t2 else t3 }>). apply ST_If. assumption.
+  - (* T_Succ *)
+    destruct IHHT.
+    + left. right. apply nv_succ. apply nat_canonical; assumption.
+    + right. destruct H as [t' He].
+    exists (<{ succ t'}>). apply ST_Succ. assumption.
+  - (* T_Pred *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists zro. apply ST_Pred0.
+      * exists t. apply ST_PredSucc. apply H.
+    + destruct H as [t1' H1]. exists <{ pred t1' }>. apply ST_Pred. apply H1.
+  - (* T_Iszero *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists tru. apply ST_Iszero0.
+      * exists fls. apply ST_IszeroSucc. assumption.
+    + destruct H as [t1' H1]. exists <{ iszero t1' }>. apply ST_Iszero. apply H1.
+Qed.
+(** [] *)
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT HE.
+  generalize dependent t'.
+  induction HT;
+         (* every case needs to introduce a couple of things *)
+         intros t' HE;
+         (* and we can deal with several impossible
+            cases all at once *)
+         try solve_by_invert.
+    - (* T_If *) inversion HE; subst; clear HE.
+      + (* ST_IFTrue *) assumption.
+      + (* ST_IfFalse *) assumption.
+      + (* ST_If *) apply T_If; try assumption.
+        apply IHHT1; assumption.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply T_0.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+      + inversion HT.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.
+(** [] *)
+
+End Variation4.
+
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (variation5)
@@ -647,8 +1176,99 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-(* FILL IN HERE *)
 *)
+
+Module Variation5.
+
+Reserved Notation "'|--' t '\in' T" (at level 40).
+
+Inductive has_type : tm -> ty -> Prop :=
+  | T_True :
+       |-- <{ true }> \in Bool
+  | T_False :
+       |-- <{ false }> \in Bool
+  | T_If : forall t1 t2 t3 T,
+       |-- t1 \in Bool ->
+       |-- t2 \in T ->
+       |-- t3 \in T ->
+       |-- <{ if t1 then t2 else t3 }> \in T
+  | T_0 :
+       |-- <{ 0 }> \in Nat
+  | T_Succ : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ succ t1 }> \in Nat
+  | T_Pred : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ pred t1 }> \in Nat
+  | T_Iszero : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ iszero t1 }> \in Bool
+  | T_Funny4 :
+        |-- <{ 0 }> \in Bool
+
+where "'|--' t '\in' T" := (has_type t T).
+
+Theorem step_deterministic':
+  deterministic step.
+Proof.
+  exact step_deterministic.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros H.
+  specialize (H 
+    <{ if 0 then true else false }>
+    Bool
+    (T_If _ _ _ _ T_Funny4 T_True T_False)).
+  destruct H.
+  - destruct H.
+    + inversion H.
+    + inversion H.
+  - destruct H as [t1 He]. inversion He. solve_by_invert.
+Qed.
+(** [] *)
+
+Lemma nvalue_nat : forall v, nvalue v -> |-- v \in Nat.
+Proof.
+  intros v H. induction H.
+  - apply T_0.
+  - apply T_Succ. apply IHnvalue.
+Qed.
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT HE.
+  generalize dependent t'.
+  induction HT;
+         (* every case needs to introduce a couple of things *)
+         intros t' HE;
+         (* and we can deal with several impossible
+            cases all at once *)
+         try solve_by_invert.
+    - (* T_If *) inversion HE; subst; clear HE.
+      + (* ST_IFTrue *) assumption.
+      + (* ST_IfFalse *) assumption.
+      + (* ST_If *) apply T_If; try assumption.
+        apply IHHT1; assumption.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply T_0.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.
+(** [] *)
+
+End Variation5.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (variation6)
@@ -660,8 +1280,110 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-(* FILL IN HERE *)
 *)
+
+Module Variation6.
+
+Reserved Notation "'|--' t '\in' T" (at level 40).
+
+Inductive has_type : tm -> ty -> Prop :=
+  | T_True :
+       |-- <{ true }> \in Bool
+  | T_False :
+       |-- <{ false }> \in Bool
+  | T_If : forall t1 t2 t3 T,
+       |-- t1 \in Bool ->
+       |-- t2 \in T ->
+       |-- t3 \in T ->
+       |-- <{ if t1 then t2 else t3 }> \in T
+  | T_0 :
+       |-- <{ 0 }> \in Nat
+  | T_Succ : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ succ t1 }> \in Nat
+  | T_Pred : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ pred t1 }> \in Nat
+  | T_Iszero : forall t1,
+       |-- t1 \in Nat ->
+       |-- <{ iszero t1 }> \in Bool
+  | T_Funny5 :
+       |-- <{ pred 0 }> \in Bool
+
+where "'|--' t '\in' T" := (has_type t T).
+
+Theorem step_deterministic' : deterministic step.
+Proof.
+  exact step_deterministic.
+Qed.
+
+Lemma bool_canonical : forall t,
+  |-- t \in Bool -> value t -> bvalue t.
+Proof.
+  intros t HT [Hb | Hn].
+  - assumption.
+  - destruct Hn as [ | Hs].
+    + inversion HT.
+    + inversion HT.
+Qed.
+
+Lemma nat_canonical : forall t,
+  |-- t \in Nat -> value t -> nvalue t.
+Proof.
+  intros t HT [Hb | Hn].
+  - inversion Hb; subst; inversion HT.
+  - assumption.
+Qed.
+
+Theorem progress : forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros t T HT.
+  induction HT; auto.
+  (* The cases that were obviously values, like T_True and
+     T_False, are eliminated immediately by auto *)
+  - (* T_If *)
+    right. destruct IHHT1.
+    + (* t1 is a value *)
+    apply (bool_canonical t1 HT1) in H.
+    destruct H.
+      * exists t2. auto.
+      * exists t3. auto.
+    + (* t1 can take a step *)
+      destruct H as [t1' H1].
+      exists (<{ if t1' then t2 else t3 }>). auto.
+  - (* T_Succ *)
+    destruct IHHT.
+    + left. right. apply nv_succ. apply nat_canonical; assumption.
+    + right. destruct H as [t' He]. exists (<{ succ t'}>). auto.
+  - (* T_Pred *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists zro. apply ST_Pred0.
+      * exists t. apply ST_PredSucc. apply H.
+    + destruct H as [t1' H1]. exists <{ pred t1' }>. apply ST_Pred. apply H1.
+  - (* T_Iszero *)
+    right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H. destruct H.
+      * exists tru. apply ST_Iszero0.
+      * exists fls. apply ST_IszeroSucc. assumption.
+    + destruct H as [t1' H1]. exists <{ iszero t1' }>. apply ST_Iszero. apply H1.
+  - right. exists zro. apply ST_Pred0.
+Qed.
+(** [] *)
+
+Theorem not_preservation : ~ forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros H.
+  specialize (H <{ pred 0 }> zro Bool T_Funny5 ST_Pred0).
+  inversion H.
+Qed.
+
+End Variation6.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (more_variations)
@@ -682,9 +1404,106 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
     be undefined, rather than being defined to be [0].  Can we
     achieve this simply by removing the rule from the definition of
     [step]?  Would doing so create any problems elsewhere?
-
-(* FILL IN HERE *)
+  break progress
 *)
+
+Module RemovePred0.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_IfTrue : forall t1 t2,
+      <{ if true then t1 else t2 }> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{ if false then t1 else t2 }> --> t2
+  | ST_If : forall c c' t2 t3,
+      c --> c' ->
+      <{ if c then t2 else t3 }> --> <{ if c' then t2 else t3 }>
+  | ST_Succ : forall t1 t1',
+      t1 --> t1' ->
+      <{ succ t1 }> --> <{ succ t1' }>
+  | ST_PredSucc : forall v,
+      nvalue v ->
+      <{ pred (succ v) }> --> v
+  | ST_Pred : forall t1 t1',
+      t1 --> t1' ->
+      <{ pred t1 }> --> <{ pred t1' }>
+  | ST_Iszero0 :
+      <{ iszero 0 }> --> <{ true }>
+  | ST_IszeroSucc : forall v,
+       nvalue v ->
+      <{ iszero (succ v) }> --> <{ false }>
+  | ST_Iszero : forall t1 t1',
+      t1 --> t1' ->
+      <{ iszero t1 }> --> <{ iszero t1' }>
+
+where "t '-->' t'" := (step t t').
+
+Theorem step_deterministic:
+  deterministic step.
+Proof with eauto.
+  assert (nf_nvalue : forall v t1, nvalue v -> ~ (v --> t1)).
+    { intros v t1 Hv. generalize dependent t1.
+      induction Hv; intros t1 He.
+      - inversion He.
+      - inversion He; subst. apply (IHHv t1'). assumption. }
+  intros x y1 y2 H. generalize dependent y2.
+  induction H; intros y2 Hy2;
+    (inversion Hy2; subst; try solve_by_invert);
+    try reflexivity;
+    try solve [f_equal; apply IHstep; assumption]; (* congruence rule *)
+    exfalso.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_PredSucc *) apply (nf_nvalue (scc y2) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+  - (* ST_IszeroSucc *) apply (nf_nvalue (scc v) t1'); auto.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+  |-- t \in T ->
+  value t \/ exists t', t --> t'.
+Proof.
+  intros H.
+  specialize (H <{ pred 0 }> Nat (T_Pred _ T_0)).
+  destruct H.
+  - destruct H.
+    + inversion H.
+    + inversion H.
+  - destruct H as [t' He]. inversion He; subst. inversion H0.
+Qed.
+(** [] *)
+
+Theorem preservation : forall t t' T,
+  |-- t \in T ->
+  t --> t' ->
+  |-- t' \in T.
+Proof.
+  intros t t' T HT HE.
+  generalize dependent t'.
+  induction HT;
+         (* every case needs to introduce a couple of things *)
+         intros t' HE;
+         (* and we can deal with several impossible
+            cases all at once *)
+         try solve_by_invert.
+    - (* T_If *) inversion HE; subst; clear HE.
+      + (* ST_IFTrue *) assumption.
+      + (* ST_IfFalse *) assumption.
+      + (* ST_If *) apply T_If; try assumption.
+        apply IHHT1; assumption.
+    - (* T_Succ *) inversion HE; subst. apply T_Succ. apply IHHT. assumption.
+    - (* T_Pred *) inversion HE; subst.
+      + apply nvalue_nat. assumption.
+      + apply T_Pred. apply IHHT. assumption.
+    - (* T_Iszero *) inversion HE; subst.
+      + apply T_True.
+      + apply T_False.
+      + apply T_Iszero. apply IHHT. assumption.
+Qed.
+(** [] *)
+
+End RemovePred0.
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_remove_pred0  : option (nat*string) := None.
 (** [] *)
@@ -699,8 +1518,93 @@ Definition manual_grade_for_remove_pred0  : option (nat*string) := None.
     allow for nonterminating programs?  Why might we prefer the
     small-step semantics for stating preservation and progress?
 
-(* FILL IN HERE *)
+    Not allow nonterminating programs.
 *)
+
+Module BigStep.
+
+Inductive val :=
+  v_bool : bool -> val
+  | v_nat : nat -> val.
+
+Inductive bstep : tm -> val -> Prop :=
+  E_True : bstep tru (v_bool true)
+  | E_False : bstep fls (v_bool false)
+  | E_IfTrue : forall t1 t2 t3 v,
+      bstep t1 (v_bool true) ->
+      bstep t2 v ->
+      bstep <{ if t1 then t2 else t3 }> v
+  | E_IfFalse : forall t1 t2 t3 v,
+      bstep t1 (v_bool false) ->
+      bstep t3 v ->
+      bstep <{ if t1 then t2 else t3 }> v
+  | E_Zero : bstep zro (v_nat 0)
+  | E_Succ : forall t n,
+      bstep t (v_nat n) ->
+      bstep <{ succ t }> (v_nat (S n))
+  | E_Pred0 : forall t,
+      bstep t (v_nat 0) ->
+      bstep <{ pred t }> (v_nat 0)
+  | E_PredS : forall t n,
+      bstep t (v_nat (S n)) ->
+      bstep <{ pred t }> (v_nat n)
+  | E_Iszero : forall t n,
+      bstep t (v_nat n) ->
+      bstep <{ iszero t }> (v_bool (n =? 0)).
+
+Inductive has_type_val : ty -> val -> Prop :=
+  | Tv_Bool : forall b, has_type_val Bool (v_bool b)
+  | Tv_Nat : forall n, has_type_val Nat (v_nat n).
+
+Theorem preservation : forall t v T,
+  |-- t \in T ->
+  bstep t v ->
+  has_type_val T v.
+Proof.
+  intros t v T HT. generalize dependent v.
+  induction HT; intros v He.
+  - (* T_True *)  inversion He; subst. apply Tv_Bool.
+  - (* T_False *) inversion He; subst. apply Tv_Bool.
+  - (* T_If *) inversion He; subst.
+    + apply IHHT2. assumption.
+    + apply IHHT3. assumption.
+  - (* T_0 *) inversion He; subst. apply Tv_Nat.
+  - (* T_Succ *) inversion He; subst. apply Tv_Nat.
+  - (* T_Pred *) inversion He; subst; apply Tv_Nat.
+  - (* T_Iszero *) inversion He; subst. apply Tv_Bool.
+Qed.
+
+Theorem progress : forall t T,
+  |-- t \in T ->
+  exists v, bstep t v.
+Proof.
+  intros t T HT. induction HT.
+  - exists (v_bool true). apply E_True.
+  - exists (v_bool false). apply E_False.
+  - destruct IHHT1 as [v1 He1].
+    apply preservation with (v := v1) in HT1; [| assumption].
+    inversion HT1; subst.
+    destruct b.
+    + destruct IHHT2 as [v2 He2]. exists v2. apply E_IfTrue; assumption.
+    + destruct IHHT3 as [v3 He3]. exists v3. apply E_IfFalse; assumption.
+  - exists (v_nat 0). apply E_Zero.
+  - destruct IHHT as [v He].
+    apply preservation with (v := v) in HT; [| assumption].
+    inversion HT; subst. exists (v_nat (S n)). apply E_Succ. assumption.
+  - destruct IHHT as [v He].
+    apply preservation with (v := v) in HT; [| assumption].
+    inversion HT; subst.
+    destruct n.
+    + exists (v_nat 0). apply E_Pred0. assumption.
+    + exists (v_nat n). apply E_PredS. assumption.
+  - destruct IHHT as [v He].
+    apply preservation with (v := v) in HT; [| assumption].
+    inversion HT; subst.
+    exists (v_bool (n =? 0)). apply E_Iszero. assumption.
+Qed.
+
+End BigStep.
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_prog_pres_bigstep : option (nat*string) := None.
 (** [] *)
