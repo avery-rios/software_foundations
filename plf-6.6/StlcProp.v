@@ -146,7 +146,21 @@ Theorem progress' : forall t T,
 Proof.
   intros t.
   induction t; intros T Ht; auto.
-  (* FILL IN HERE *) Admitted.
+  - (* tm_var *) inversion Ht; subst. inversion H1.
+  - (* tm_app *) right. inversion Ht; subst.
+    destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+    + destruct (IHt2 _ H4) as [Hv2 | [ t2' Ht2']].
+      * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+        subst t1. exists <{ [x11 := t2] t11 }>. apply ST_AppAbs. assumption.
+      * exists <{ t1 t2' }>. apply ST_App2; assumption.
+    + exists <{ t1' t2 }>. apply ST_App1. assumption.
+  - (* tm_if *) right. inversion Ht; subst.
+    destruct (IHt1 _ H3) as [Hv1 | [t1' Ht1']].
+    + destruct (canonical_forms_bool _ H3 Hv1); subst t1.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + exists <{ if t1' then t2 else t3 }>. apply ST_If. assumption.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -334,7 +348,15 @@ Proof.
   remember (x |-> U; Gamma) as Gamma'.
   generalize dependent Gamma.
   induction Ht; intros Gamma' G; simpl; eauto.
- (* FILL IN HERE *) Admitted.
+  - (* T_Var *) destruct (String.eqb_spec x x0); subst.
+    + rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + apply T_Var. rewrite update_neq in H; [| assumption].
+      apply H.
+  - (* T_Abs *) destruct (String.eqb_spec x x0); subst; apply T_Abs.
+    + rewrite update_shadow in Ht. apply Ht.
+    + apply IHHt. apply update_permute. assumption.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -423,7 +445,15 @@ Theorem not_subject_expansion:
   exists t t' T, t --> t' /\ (empty |-- t' \in T) /\ ~ (empty |-- t \in T).
 Proof.
   (* Write "exists <{ ... }>" to use STLC notation. *)
-  (* FILL IN HERE *) Admitted.
+  exists <{ if true then \x:Bool,x else false }>.
+  exists <{ \x:Bool, x}>.
+  exists <{ Bool -> Bool }>.
+  repeat split.
+  - apply ST_IfTrue.
+  - apply T_Abs. apply T_Var. reflexivity.
+  - intros H. inversion H; subst; clear H.
+    inversion H7.
+Qed.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_subject_expansion_stlc : option (nat*string) := None.
@@ -448,7 +478,12 @@ Proof.
   intros t t' T Hhas_type Hmulti. unfold stuck.
   intros [Hnf Hnot_val]. unfold normal_form in Hnf.
   induction Hmulti.
-  (* FILL IN HERE *) Admitted.
+  - destruct (progress _ _ Hhas_type); auto.
+  - apply IHHmulti.
+    + apply preservation with x0; assumption.
+    + apply Hnf.
+    + apply Hnot_val.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -464,7 +499,15 @@ Theorem unique_types : forall Gamma e T T',
   Gamma |-- e \in T' ->
   T = T'.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros Gamma e T T' H. generalize dependent T'.
+  induction H; intros T' Ht'; inversion Ht'; subst.
+  - (* T_Var *) congruence.
+  - (* T_Abs *) f_equal. apply IHhas_type. assumption.
+  - (* T_App *) apply IHhas_type1 in H4. injection H4 as _ E. apply E.
+  - (* T_True *) reflexivity.
+  - (* T_False *) reflexivity.
+  - (* T_If *) apply IHhas_type2 in H8. apply H8.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -540,7 +583,35 @@ Definition closed (t:tm) :=
     crucial to understanding substitution and its properties, which
     are really the crux of the lambda-calculus. *)
 
-(* FILL IN HERE *)
+(**
+   ---------------------- (afi_var)
+    appears_free_in x x
+
+    appears_free_in x t1
+   --------------------------- (afi_app1)
+    appears_free_in x (t1 t2)
+
+    appears_free_in x t2
+   --------------------------- (afi_app2)
+    appears_free_in x (t1 t2)
+
+    y <> x
+    appears_free_in x t1
+   ------------------------------- (afi_abs)
+    appears_free_in x (\y:T1, t1)
+
+    appears_free_in x t1
+   ------------------------------------------- (afi_if1)
+    appears_free_in x (if t1 then t2 else t3)
+
+    appears_free_in x t2
+   ------------------------------------------- (afi_if2)
+    appears_free_in x (if t1 then t2 else t3)
+
+    appears_free_in x t3
+   ------------------------------------------- (afi_if3)
+    appears_free_in x (if t1 then t2 else t3)
+*)
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_afi : option (nat*string) := None.
@@ -593,7 +664,10 @@ Proof.
   generalize dependent T.
   induction H as [| | |y T1 t1 H H0 IHappears_free_in| | |];
          intros; try solve [inversion H0; eauto].
-  (* FILL IN HERE *) Admitted.
+  - (* afi_abs *) inversion H1; subst.
+    apply IHappears_free_in in H7. destruct H7 as [T' Ex].
+    exists T'. rewrite update_neq in Ex; assumption.
+Qed.
 (** [] *)
 
 (** From the [free_in_context] lemma, it immediately follows that any
@@ -605,7 +679,9 @@ Corollary typable_empty__closed : forall t T,
     empty |-- t \in T  ->
     closed t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros t T Ht x Hf. apply (free_in_context _ _ _ _ Hf) in Ht.
+  destruct Ht as [T' E]. discriminate E.
+Qed.
 (** [] *)
 
 (** Finally, we establish _context_invariance_.  It is useful in cases
@@ -667,7 +743,20 @@ Proof.
   intros.
   generalize dependent Gamma'.
   induction H as [| ? x0 ????? | | | |]; intros; auto.
-  (* FILL IN HERE *) Admitted.
+  - apply T_Var. rewrite <- H0.
+    + assumption.
+    + apply afi_var.
+  - apply T_Abs. apply IHhas_type.
+    intros x Haf. destruct (String.eqb_spec x0 x).
+    + subst x0. rewrite update_eq. rewrite update_eq. reflexivity.
+    + rewrite update_neq; [| assumption]. rewrite update_neq; [| assumption].
+      apply H0. apply afi_abs; assumption.
+  - apply T_App with T2.
+    + apply IHhas_type1. intros x Haf. apply H1.
+      apply afi_app1. apply Haf.
+    + apply IHhas_type2. intros x Haf. apply H1.
+      apply afi_app2. apply Haf.
+Qed.
 (** [] *)
 
 (** The context invariance lemma can actually be used in place of the
@@ -684,11 +773,43 @@ Proof.
     preservation theorems for the simply typed lambda-calculus (as Coq
     theorems).  You can write [Admitted] for the proofs. *)
 
-(* FILL IN HERE *)
+Definition progress_stmt : Prop :=
+  forall t T, empty |-- t \in T -> value t \/ exists t', t --> t'.
+
+Check progress : progress_stmt.
+
+Definition preservation_stmt : Prop :=
+  forall t t' T, 
+    empty |-- t \in T ->
+    t --> t' ->
+    empty |-- t' \in T.
+
+Check preservation : preservation_stmt.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_progress_preservation_statement : option (nat*string) := None.
 (** [] *)
+
+Theorem stlc_step_deterministic : deterministic step.
+Proof.
+  intros x y1 y2 H. generalize dependent y2.
+  induction H; intros y2 Hy2.
+  - (* ST_AppAbs *) inversion Hy2; try solve_by_invert.
+    + reflexivity.
+    + subst. destruct H; inversion H4.
+  - (* ST_App1 *) inversion Hy2; subst.
+    + inversion H.
+    + f_equal. apply IHstep. assumption.
+    + destruct H2; inversion H.
+  - (* ST_App2 *) inversion Hy2; subst.
+    + destruct H4; inversion H0.
+    + destruct H; inversion H4.
+    + f_equal. apply IHstep. assumption.
+  - (* ST_IfTrue *) inversion Hy2; try solve_by_invert. reflexivity.
+  - (* ST_IfFalse *) inversion Hy2; try solve_by_invert. reflexivity.
+  - (* ST_If *) inversion Hy2; subst; try solve_by_invert.
+    f_equal. apply IHstep. assumption.
+Qed.
 
 (** **** Exercise: 2 stars, standard (stlc_variation1)
 
@@ -708,12 +829,218 @@ and the following typing rule:
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* becomes false *)
       - Progress
-(* FILL IN HERE *)
+(* remains true *)
       - Preservation
-(* FILL IN HERE *)
+(* remains true *)
 *)
+
+Module Variation1.
+
+Inductive tm : Type :=
+  | tm_var   : string -> tm
+  | tm_app   : tm -> tm -> tm
+  | tm_abs   : string -> ty -> tm -> tm
+  | tm_true  : tm
+  | tm_false : tm
+  | tm_zap   : tm
+  | tm_if    : tm -> tm -> tm -> tm.
+
+Inductive value : tm -> Prop :=
+  | v_abs : forall x T2 t1,
+      value (tm_abs x T2 t1)
+  | v_true :
+      value tm_true
+  | v_false :
+      value tm_false.
+
+Fixpoint subst (x : string) (s : tm) (t : tm) : tm :=
+  match t with
+  | tm_var y =>
+      if String.eqb x y then s else t
+  | tm_abs y T t1 =>
+      if String.eqb x y then t else tm_abs y T (subst x s t1)
+  | tm_app t1 t2 =>
+      tm_app (subst x s t1) (subst x s t2)
+  | tm_true => tm_true
+  | tm_false => tm_false
+  | tm_zap => tm_zap
+  | tm_if t1 t2 t3 =>
+      tm_if (subst x s t1) (subst x s t2) (subst x s t3)
+  end.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         tm_app (tm_abs x T2 t1) v2 --> subst x v2 t1
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         tm_app t1 t2 --> tm_app t1' t2
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         tm_app v1 t2 --> tm_app v1 t2'
+  | ST_IfTrue : forall t1 t2,
+      tm_if tm_true t1 t2 --> t1
+  | ST_IfFalse : forall t1 t2,
+      tm_if tm_false t1 t2 --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      tm_if t1 t2 t3 --> tm_if t1' t2 t3
+  | ST_Zap : forall t,
+      t --> tm_zap
+
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Notation multistep := (multi step).
+Notation "t1 '-->*' t2" := (multistep t1 t2) (at level 40).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      has_type Gamma (tm_var x) T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      has_type (x |-> T2 ; Gamma) t1 T1 ->
+      has_type Gamma (tm_abs x T2 t1) (Ty_Arrow T2 T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow T2 T1) ->
+      has_type Gamma t2 T2 ->
+      has_type Gamma (tm_app t1 t2) T1
+  | T_True : forall Gamma,
+       has_type Gamma tm_true Ty_Bool
+  | T_False : forall Gamma,
+       has_type Gamma tm_false Ty_Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       has_type Gamma t1 Ty_Bool ->
+       has_type Gamma t2 T1 ->
+       has_type Gamma t3 T1 ->
+       has_type Gamma (tm_if t1 t2 t3) T1
+  | T_Zap : forall T Gamma,
+      has_type Gamma tm_zap T.
+
+Hint Constructors has_type : core.
+
+Theorem step_not_deterministic : ~ deterministic step.
+Proof.
+  intros H.
+  specialize (H
+    (tm_if tm_true tm_true tm_true)
+    tm_true
+    tm_zap
+    (ST_IfTrue _ _)
+    (ST_Zap _)).
+  discriminate H.
+Qed.
+
+Lemma canonical_forms_bool : forall t,
+  has_type empty t Ty_Bool ->
+  value t ->
+  (t = tm_true) \/ (t = tm_false).
+Proof.
+  intros t HT HVal.
+  destruct HVal; auto.
+  inversion HT.
+Qed.
+
+Lemma canonical_forms_fun : forall t T1 T2,
+  has_type empty t (Ty_Arrow T1 T2) ->
+  value t ->
+  exists x u, t = tm_abs x T1 u.
+Proof.
+  intros t T1 T2 HT HVal.
+  destruct HVal as [x ? t1| |] ; inversion HT; subst.
+  exists x, t1. reflexivity.
+Qed.
+
+Theorem progress : forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros t.
+  induction t; intros T Ht; auto.
+  - (* tm_var *) inversion Ht; subst. inversion H1.
+  - (* tm_app *) right. inversion Ht; subst.
+    destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+    + destruct (IHt2 _ H4) as [Hv2 | [ t2' Ht2']].
+      * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+        subst t1. exists (subst x11 t2 t11). apply ST_AppAbs. assumption.
+      * exists (tm_app t1 t2'). apply ST_App2; assumption.
+    + exists (tm_app t1' t2). apply ST_App1. assumption.
+  - (* tm_abs *) left. apply v_abs.
+  - (* tm_true *) left. apply v_true.
+  - (* tm_false *) left. apply v_false.
+  - (* tm_zap *) right. exists tm_zap. apply ST_Zap.
+  - (* tm_if *) right. inversion Ht; subst.
+    destruct (IHt1 _ H3) as [Hv1 | [t1' Ht1']].
+    + destruct (canonical_forms_bool _ H3 Hv1); subst t1.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + exists (tm_if t1' t2 t3). apply ST_If. assumption.
+Qed.
+
+Lemma weakening : forall Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     has_type Gamma t T ->
+     has_type Gamma' t T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Lemma weakening_empty : forall Gamma t T,
+     has_type empty t T ->
+     has_type Gamma t T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+  has_type (x |-> U ; Gamma) t T ->
+  has_type empty v U ->
+  has_type Gamma (subst x v t) T.
+Proof.
+  intros Gamma x U t v T Ht Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction Ht; intros Gamma' G; simpl; eauto.
+  - (* T_Var *) destruct (String.eqb_spec x x0); subst.
+    + rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + apply T_Var. rewrite update_neq in H; [| assumption].
+      apply H.
+  - (* T_Abs *) destruct (String.eqb_spec x x0); subst; apply T_Abs.
+    + rewrite update_shadow in Ht. apply Ht.
+    + apply IHHt. apply update_permute. assumption.
+Qed.
+
+Theorem preservation : forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; auto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      apply substitution_preserves_typing with T2...
+      inversion HT1...
+Qed.
+
+End Variation1.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_stlc_variation1 : option (nat*string) := None.
@@ -736,12 +1063,173 @@ Definition manual_grade_for_stlc_variation1 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* becomes false *)
       - Progress
-(* FILL IN HERE *)
+(* remains true *)
       - Preservation
-(* FILL IN HERE *)
+(* becomes false *)
 *)
+
+Module Variation2.
+
+Inductive tm : Type :=
+  | tm_var   : string -> tm
+  | tm_app   : tm -> tm -> tm
+  | tm_abs   : string -> ty -> tm -> tm
+  | tm_true  : tm
+  | tm_false : tm
+  | tm_foo   : tm
+  | tm_if    : tm -> tm -> tm -> tm.
+
+Inductive value : tm -> Prop :=
+  | v_abs : forall x T2 t1,
+      value (tm_abs x T2 t1)
+  | v_true :
+      value tm_true
+  | v_false :
+      value tm_false.
+
+Fixpoint subst (x : string) (s : tm) (t : tm) : tm :=
+  match t with
+  | tm_var y =>
+      if String.eqb x y then s else t
+  | tm_abs y T t1 =>
+      if String.eqb x y then t else tm_abs y T (subst x s t1)
+  | tm_app t1 t2 =>
+      tm_app (subst x s t1) (subst x s t2)
+  | tm_true => tm_true
+  | tm_false => tm_false
+  | tm_foo => tm_foo
+  | tm_if t1 t2 t3 =>
+      tm_if (subst x s t1) (subst x s t2) (subst x s t3)
+  end.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         tm_app (tm_abs x T2 t1) v2 --> subst x v2 t1
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         tm_app t1 t2 --> tm_app t1' t2
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         tm_app v1 t2 --> tm_app v1 t2'
+  | ST_IfTrue : forall t1 t2,
+      tm_if tm_true t1 t2 --> t1
+  | ST_IfFalse : forall t1 t2,
+      tm_if tm_false t1 t2 --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      tm_if t1 t2 t3 --> tm_if t1' t2 t3
+  | ST_Foo1 : forall x T,
+      tm_abs x T (tm_var x) --> tm_foo
+  | ST_Foo2 : tm_foo --> tm_true
+
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Notation multistep := (multi step).
+Notation "t1 '-->*' t2" := (multistep t1 t2) (at level 40).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      has_type Gamma (tm_var x) T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      has_type (x |-> T2 ; Gamma) t1 T1 ->
+      has_type Gamma (tm_abs x T2 t1) (Ty_Arrow T2 T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow T2 T1) ->
+      has_type Gamma t2 T2 ->
+      has_type Gamma (tm_app t1 t2) T1
+  | T_True : forall Gamma,
+       has_type Gamma tm_true Ty_Bool
+  | T_False : forall Gamma,
+       has_type Gamma tm_false Ty_Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       has_type Gamma t1 Ty_Bool ->
+       has_type Gamma t2 T1 ->
+       has_type Gamma t3 T1 ->
+       has_type Gamma (tm_if t1 t2 t3) T1.
+
+Hint Constructors has_type : core.
+
+Theorem step_not_deterministic : ~ deterministic step.
+Proof.
+  intros H. specialize (H
+    (tm_app (tm_abs x Ty_Bool (tm_var x)) tm_true)
+    (tm_app tm_foo tm_true)
+    tm_true
+    (ST_App1 _ _ _ (ST_Foo1 _ _))
+    (ST_AppAbs _ _ _ _ v_true)).
+  discriminate H.
+Qed.
+
+Lemma canonical_forms_bool : forall t,
+  has_type empty t Ty_Bool ->
+  value t ->
+  (t = tm_true) \/ (t = tm_false).
+Proof.
+  intros t HT HVal.
+  destruct HVal; auto.
+  inversion HT.
+Qed.
+
+Lemma canonical_forms_fun : forall t T1 T2,
+  has_type empty t (Ty_Arrow T1 T2) ->
+  value t ->
+  exists x u, t = tm_abs x T1 u.
+Proof.
+  intros t T1 T2 HT HVal.
+  destruct HVal as [x ? t1| |] ; inversion HT; subst.
+  exists x, t1. reflexivity.
+Qed.
+
+Theorem progress : forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros t.
+  induction t; intros T Ht; auto.
+  - (* tm_var *) inversion Ht; subst. inversion H1.
+  - (* tm_app *) right. inversion Ht; subst.
+    destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+    + destruct (IHt2 _ H4) as [Hv2 | [ t2' Ht2']].
+      * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+        subst t1. exists (subst x11 t2 t11). apply ST_AppAbs. assumption.
+      * exists (tm_app t1 t2'). apply ST_App2; assumption.
+    + exists (tm_app t1' t2). apply ST_App1. assumption.
+  - (* tm_abs *) left. apply v_abs.
+  - (* tm_true *) left. apply v_true.
+  - (* tm_false *) left. apply v_false.
+  - (* tm_foo *) inversion Ht.
+  - (* tm_if *) right. inversion Ht; subst.
+    destruct (IHt1 _ H3) as [Hv1 | [t1' Ht1']].
+    + destruct (canonical_forms_bool _ H3 Hv1); subst t1.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + exists (tm_if t1' t2 t3). apply ST_If. assumption.
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof.
+  intros H.
+  remember (tm_abs x Ty_Bool (tm_var x)) as t.
+  assert (Ht : has_type empty t (Ty_Arrow Ty_Bool Ty_Bool)).
+    { subst t. apply T_Abs. apply T_Var. reflexivity. }
+  apply H with (t' := tm_foo) in Ht.
+  - inversion Ht.
+  - subst t. apply ST_Foo1.
+Qed.
+
+End Variation2.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_stlc_variation2 : option (nat*string) := None.
@@ -756,12 +1244,99 @@ Definition manual_grade_for_stlc_variation2 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* remains true *)
       - Progress
-(* FILL IN HERE *)
+(* becomes false *)
       - Preservation
-(* FILL IN HERE *)
+(* remains true *)
 *)
+
+Module Variation3.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         tm_app (tm_abs x T2 t1) v2 --> subst x v2 t1
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         tm_app v1 t2 --> tm_app v1 t2'
+  | ST_IfTrue : forall t1 t2,
+      tm_if tm_true t1 t2 --> t1
+  | ST_IfFalse : forall t1 t2,
+      tm_if tm_false t1 t2 --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      tm_if t1 t2 t3 --> tm_if t1' t2 t3
+
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Notation multistep := (multi step).
+Notation "t1 '-->*' t2" := (multistep t1 t2) (at level 40).
+
+Theorem step_deterministic : deterministic step.
+Proof.
+  intros x y1 y2 H. generalize dependent y2.
+  induction H; intros y2 Hy2.
+  - (* ST_AppAbs *) inversion Hy2; try solve_by_invert.
+    + reflexivity.
+    + subst. destruct H; inversion H4.
+  - (* ST_App2 *) inversion Hy2; subst.
+    + destruct H4; inversion H0.
+    + f_equal. apply IHstep. assumption.
+  - (* ST_IfTrue *) inversion Hy2; try solve_by_invert. reflexivity.
+  - (* ST_IfFalse *) inversion Hy2; try solve_by_invert. reflexivity.
+  - (* ST_If *) inversion Hy2; subst; try solve_by_invert.
+    f_equal. apply IHstep. assumption.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros H. 
+  remember (tm_app
+    (tm_if
+      tm_true
+      (tm_abs x Ty_Bool tm_true)
+      (tm_abs x Ty_Bool tm_false))
+    tm_true) as t.
+  assert (Ht : has_type empty t Ty_Bool).
+    { subst t. eapply T_App.
+      - apply T_If.
+        + apply T_True.
+        + apply T_Abs. apply T_True.
+        + apply T_Abs. apply T_False.
+      - apply T_True. }
+  apply H in Ht. subst t. destruct Ht as [Ht | [t' Ht]].
+  - inversion Ht.
+  - inversion Ht; subst. inversion H4.
+Qed.
+
+Theorem preservation : forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; auto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      apply substitution_preserves_typing with T2...
+      inversion HT1...
+Qed.
+
+End Variation3.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_stlc_variation3 : option (nat*string) := None.
@@ -781,13 +1356,98 @@ Definition manual_grade_for_stlc_variation3 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* becomes false *)
       - Progress
-(* FILL IN HERE *)
+(* remains true *)
       - Preservation
-(* FILL IN HERE *)
+(* becomes false *)
 *)
 (** [] *)
+
+Module Variation4.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         tm_app (tm_abs x T2 t1) v2 --> subst x v2 t1
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         tm_app t1 t2 --> tm_app t1' t2
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         tm_app v1 t2 --> tm_app v1 t2'
+  | ST_IfTrue : forall t1 t2,
+      tm_if tm_true t1 t2 --> t1
+  | ST_IfFalse : forall t1 t2,
+      tm_if tm_false t1 t2 --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      tm_if t1 t2 t3 --> tm_if t1' t2 t3
+  | ST_FunnyIfTrue : forall t1 t2,
+      tm_if tm_true t1 t2 --> tm_true
+
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Notation multistep := (multi step).
+Notation "t1 '-->*' t2" := (multistep t1 t2) (at level 40).
+
+Theorem step_not_deterministic : ~ deterministic step.
+Proof.
+  intros H. specialize (H
+    (tm_if tm_true tm_false tm_true) tm_true tm_false
+    (ST_FunnyIfTrue _ _)
+    (ST_IfTrue _ _)).
+  discriminate H.
+Qed.
+
+Theorem progress : forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros t.
+  induction t; intros T Ht; auto.
+  - (* tm_var *) inversion Ht; subst. inversion H1.
+  - (* tm_app *) right. inversion Ht; subst.
+    destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+    + destruct (IHt2 _ H4) as [Hv2 | [ t2' Ht2']].
+      * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+        subst t1. exists (subst x11 t2 t11). apply ST_AppAbs. assumption.
+      * exists (tm_app t1 t2'). apply ST_App2; assumption.
+    + exists (tm_app t1' t2). apply ST_App1. assumption.
+  - (* tm_if *) right. inversion Ht; subst.
+    destruct (IHt1 _ H3) as [Hv1 | [t1' Ht1']].
+    + destruct (canonical_forms_bool _ H3 Hv1); subst t1.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + exists (tm_if t1' t2 t3). apply ST_If. assumption.
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof with eauto.
+  intros H.
+  remember (tm_if
+    tm_true
+    (tm_abs x Ty_Bool tm_true)
+    (tm_abs x Ty_Bool tm_false)) as t.
+  assert (Ht : has_type empty t (Ty_Arrow Ty_Bool Ty_Bool)).
+    { subst t. apply T_If.
+      - apply T_True.
+      - apply T_Abs. apply T_True.
+      - apply T_Abs. apply T_False. }
+  subst t. apply H with (t' := tm_true) in Ht.
+  - inversion Ht.
+  - apply ST_FunnyIfTrue.
+Qed.
+
+End Variation4.
 
 (** **** Exercise: 2 stars, standard, optional (stlc_variation5)
 
@@ -805,13 +1465,113 @@ Definition manual_grade_for_stlc_variation3 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* remains true *)
       - Progress
-(* FILL IN HERE *)
+(* remains true *)
       - Preservation
-(* FILL IN HERE *)
+(* becomes false *)
 *)
 (** [] *)
+
+Module Variation5.
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      has_type Gamma (tm_var x) T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      has_type (x |-> T2 ; Gamma) t1 T1 ->
+      has_type Gamma (tm_abs x T2 t1) (Ty_Arrow T2 T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow T2 T1) ->
+      has_type Gamma t2 T2 ->
+      has_type Gamma (tm_app t1 t2) T1
+  | T_FunnyApp : forall Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow Ty_Bool (Ty_Arrow Ty_Bool Ty_Bool)) ->
+      has_type Gamma t2 Ty_Bool ->
+      has_type Gamma (tm_app t1 t2) Ty_Bool
+  | T_True : forall Gamma,
+       has_type Gamma tm_true Ty_Bool
+  | T_False : forall Gamma,
+       has_type Gamma tm_false Ty_Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       has_type Gamma t1 Ty_Bool ->
+       has_type Gamma t2 T1 ->
+       has_type Gamma t3 T1 ->
+       has_type Gamma (tm_if t1 t2 t3) T1.
+
+Hint Constructors has_type : core.
+
+Theorem step_deterministic : deterministic step.
+Proof.
+  exact stlc_step_deterministic.
+Qed.
+
+Lemma canonical_forms_bool : forall t,
+  has_type empty t Ty_Bool ->
+  value t ->
+  (t = tm_true) \/ (t = tm_false).
+Proof.
+  intros t HT HVal.
+  destruct HVal; auto.
+  inversion HT.
+Qed.
+
+Lemma canonical_forms_fun : forall t T1 T2,
+  has_type empty t (Ty_Arrow T1 T2) ->
+  value t ->
+  exists x u, t = tm_abs x T1 u.
+Proof.
+  intros t T1 T2 HT HVal.
+  destruct HVal as [x ? t1| |] ; inversion HT; subst.
+  exists x, t1. reflexivity.
+Qed.
+
+Theorem progress : forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros t.
+  induction t; intros T Ht; auto.
+  - (* tm_var *) inversion Ht; subst. inversion H1.
+  - (* tm_app *) right. inversion Ht; subst.
+    { destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+      + destruct (IHt2 _ H4) as [Hv2 | [ t2' Ht2']].
+        * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+          subst t1. exists (subst x11 t2 t11). apply ST_AppAbs. assumption.
+        * exists (tm_app t1 t2'). apply ST_App2; assumption.
+      + exists (tm_app t1' t2). apply ST_App1. assumption. }
+    { destruct (IHt1 _ H2) as [Hv1 | [t1' Ht1']].
+      + destruct (IHt2 _ H4) as [Hv2 | [t2' Ht2']].
+        * destruct (canonical_forms_fun _ _ _ H2 Hv1) as [x11 [t11 Et1]].
+          subst t1. exists (subst x11 t2 t11). apply ST_AppAbs. assumption.
+        * exists (tm_app t1 t2'). apply ST_App2; assumption.
+      + exists (tm_app t1' t2). apply ST_App1. assumption. }
+  - (* tm_if *) right. inversion Ht; subst.
+    destruct (IHt1 _ H3) as [Hv1 | [t1' Ht1']].
+    + destruct (canonical_forms_bool _ H3 Hv1); subst t1.
+      * exists t2. apply ST_IfTrue.
+      * exists t3. apply ST_IfFalse.
+    + exists (tm_if t1' t2 t3). apply ST_If. assumption.
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof.
+  intros H.
+  remember (tm_app (tm_abs x Ty_Bool (tm_abs x Ty_Bool tm_true)) tm_true) as t.
+  assert (Ht : has_type empty t Ty_Bool).
+    { subst t. apply T_FunnyApp.
+      - apply T_Abs. apply T_Abs. apply T_True.
+      - apply T_True. }
+  apply H with (t' := subst x tm_true (tm_abs x Ty_Bool tm_true)) in Ht.
+  - simpl in Ht. inversion Ht.
+  - subst t. apply ST_AppAbs. apply v_true.
+Qed.
+
+End Variation5.
 
 (** **** Exercise: 2 stars, standard, optional (stlc_variation6)
 
@@ -829,13 +1589,126 @@ Definition manual_grade_for_stlc_variation3 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* remains true *)
       - Progress
-(* FILL IN HERE *)
+(* becomes false *)
       - Preservation
-(* FILL IN HERE *)
+(* remains true *)
 *)
 (** [] *)
+
+Module Variation6.
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      has_type Gamma (tm_var x) T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      has_type (x |-> T2 ; Gamma) t1 T1 ->
+      has_type Gamma (tm_abs x T2 t1) (Ty_Arrow T2 T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow T2 T1) ->
+      has_type Gamma t2 T2 ->
+      has_type Gamma (tm_app t1 t2) T1
+  | T_FunnyApp' : forall Gamma t1 t2,
+      has_type Gamma t1 Ty_Bool ->
+      has_type Gamma t2 Ty_Bool ->
+      has_type Gamma (tm_app t1 t2) Ty_Bool
+  | T_True : forall Gamma,
+       has_type Gamma tm_true Ty_Bool
+  | T_False : forall Gamma,
+       has_type Gamma tm_false Ty_Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       has_type Gamma t1 Ty_Bool ->
+       has_type Gamma t2 T1 ->
+       has_type Gamma t3 T1 ->
+       has_type Gamma (tm_if t1 t2 t3) T1.
+
+Hint Constructors has_type : core.
+
+Theorem step_deterministic : deterministic step.
+Proof.
+  exact stlc_step_deterministic.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros H. specialize (H
+    (tm_app tm_true tm_true) Ty_Bool
+    (T_FunnyApp' _ _ _ (T_True _) (T_True _))).
+  destruct H as [H | [t' H]].
+  - inversion H.
+  - inversion H; subst; solve_by_invert.
+Qed.
+
+Lemma weakening : forall Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     has_type Gamma t T ->
+     has_type Gamma' t T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Lemma weakening_empty : forall Gamma t T,
+     has_type empty t T ->
+     has_type Gamma t T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+  has_type (x |-> U ; Gamma) t T ->
+  has_type empty v U ->
+  has_type Gamma (subst x v t) T.
+Proof.
+  intros Gamma x U t v T Ht Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction Ht; intros Gamma' G; simpl; eauto.
+  - (* T_Var *) destruct (String.eqb_spec x x0); subst.
+    + rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + apply T_Var. rewrite update_neq in H; [| assumption].
+      apply H.
+  - (* T_Abs *) destruct (String.eqb_spec x x0); subst; apply T_Abs.
+    + rewrite update_shadow in Ht. apply Ht.
+    + apply IHHt. apply update_permute. assumption.
+Qed.
+
+Theorem preservation : forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; auto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      apply substitution_preserves_typing with T2...
+      inversion HT1...
+  - inversion HE; subst.
+    + inversion HT1.
+    + apply T_FunnyApp'.
+      * apply IHHT1; auto.
+      * assumption.
+    + apply T_FunnyApp'.
+      * assumption.
+      * apply IHHT2; auto.
+Qed.
+
+End Variation6.
 
 (** **** Exercise: 2 stars, standard, optional (stlc_variation7)
 
@@ -851,13 +1724,82 @@ Definition manual_grade_for_stlc_variation3 : option (nat*string) := None.
     false, give a counterexample.
 
       - Determinism of [step]
-(* FILL IN HERE *)
+(* remains true *)
       - Progress
-(* FILL IN HERE *)
+(* becomes false *)
       - Preservation
-(* FILL IN HERE *)
+(* becomes false *)
 *)
 (** [] *)
+
+Module Variation7.
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      has_type Gamma (tm_var x) T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      has_type (x |-> T2 ; Gamma) t1 T1 ->
+      has_type Gamma (tm_abs x T2 t1) (Ty_Arrow T2 T1)
+  | T_FunnyAbs : forall x t,
+      has_type empty (tm_abs x Ty_Bool t) Ty_Bool
+  | T_App : forall T1 T2 Gamma t1 t2,
+      has_type Gamma t1 (Ty_Arrow T2 T1) ->
+      has_type Gamma t2 T2 ->
+      has_type Gamma (tm_app t1 t2) T1
+  | T_True : forall Gamma,
+       has_type Gamma tm_true Ty_Bool
+  | T_False : forall Gamma,
+       has_type Gamma tm_false Ty_Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       has_type Gamma t1 Ty_Bool ->
+       has_type Gamma t2 T1 ->
+       has_type Gamma t3 T1 ->
+       has_type Gamma (tm_if t1 t2 t3) T1.
+
+Hint Constructors has_type : core.
+
+Theorem step_deterministic : deterministic step.
+Proof. exact stlc_step_deterministic. Qed.
+
+Theorem not_progress : ~ forall t T,
+     has_type empty t T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros H.
+  remember (tm_if (tm_abs x Ty_Bool tm_true) tm_true tm_true) as t.
+  assert (Ht : has_type empty t Ty_Bool).
+    { subst t. apply T_If.
+      - apply T_FunnyAbs.
+      - apply T_True.
+      - apply T_True. }
+  apply H in Ht. subst. destruct Ht as [Ht | [t' Ht]].
+  - inversion Ht.
+  - inversion Ht; subst. inversion H4.
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+  has_type empty t T ->
+  t --> t'  ->
+  has_type empty t' T.
+Proof.
+  intros H.
+  remember (tm_app (tm_abs x Ty_Bool (tm_abs y Ty_Bool x)) (tm_abs x Ty_Bool tm_true)) as t.
+  assert (Ht : has_type empty t (Ty_Arrow Ty_Bool Ty_Bool)).
+    { subst t. apply T_App with Ty_Bool.
+      - apply T_Abs. apply T_Abs. apply T_Var. reflexivity.
+      - apply T_FunnyAbs. }
+  apply H with (t' := tm_abs y Ty_Bool (tm_abs x Ty_Bool tm_true)) in Ht.
+  - inversion Ht; subst. inversion H2; subst.
+    assert (contra : None = Some Ty_Bool).
+      { replace (Some Ty_Bool) with ((y |-> Ty_Bool) y).
+        - rewrite <- H1. reflexivity.
+        - reflexivity. } 
+    discriminate contra.
+  - subst t. apply ST_AppAbs. apply v_abs.
+Qed.
+
+End Variation7.
 
 End STLCProp.
 
@@ -943,8 +1885,19 @@ Coercion tm_const : nat >-> tm.
 Reserved Notation "'[' x ':=' s ']' t" (in custom stlc at level 20, x constr).
 
 (** **** Exercise: 5 stars, standard (STLCArith.subst) *)
-Fixpoint subst (x : string) (s : tm) (t : tm) : tm
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Fixpoint subst (x : string) (s : tm) (t : tm) : tm :=
+  match t with
+  | tm_var y =>
+      if String.eqb x y then s else tm_var y
+  | tm_app t1 t2 => tm_app (subst x s t1) (subst x s t2)
+  | tm_abs y T t1 =>
+      if String.eqb x y then t else tm_abs y T (subst x s t1)
+  | tm_const n => tm_const n
+  | tm_succ t1 => tm_succ (subst x s t1)
+  | tm_pred t1 => tm_pred (subst x s t1)
+  | tm_mult t1 t2 => tm_mult (subst x s t1) (subst x s t2)
+  | tm_if0 t1 t2 t3 => tm_if0 (subst x s t1) (subst x s t2) (subst x s t3)
+  end.
 
 (** (You'll need to add remove the period at the end of this
     definition and add
@@ -954,7 +1907,8 @@ Fixpoint subst (x : string) (s : tm) (t : tm) : tm
     when you fill it in.) *)
 
 Inductive value : tm -> Prop :=
-  (* FILL IN HERE *)
+  | v_nat : forall n, value (tm_const n)
+  | v_abs : forall x T t, value (tm_abs x T t)
 .
 
 Hint Constructors value : core.
@@ -962,7 +1916,43 @@ Hint Constructors value : core.
 Reserved Notation "t '-->' t'" (at level 40).
 
 Inductive step : tm -> tm -> Prop :=
-  (* FILL IN HERE *)
+  | ST_App1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ t1 t2 }> --> <{ t1' t2 }>
+  | ST_App2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ v1 t2 }> --> <{ v1 t2' }>
+  | ST_AppAbs : forall x T t1 v2,
+      value v2 ->
+      <{ (\x:T,t1) v2 }> --> subst x v2 t1
+  | ST_Succ : forall t t',
+      t --> t' ->
+      <{ succ t }> --> <{ succ t' }>
+  | ST_SuccConst : forall (n : nat),
+      <{ succ n }> --> tm_const (S n)
+  | ST_Pred : forall t t',
+      t --> t' ->
+      <{ pred t }> --> <{ pred t' }>
+  | ST_PredConst : forall (n : nat),
+      <{ pred n }> --> tm_const (pred n)
+  | ST_Mult1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ t1 * t2 }> --> <{ t1' * t2 }>
+  | ST_Mult2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ v1 * t2 }> --> <{ v1 * t2' }>
+  | ST_MultConst : forall (n1 n2 : nat),
+      <{ n1 * n2 }> --> tm_const (n1 * n2)
+  | ST_If0 : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      <{ if0 t1 then t2 else t3 }> --> <{ if0 t1' then t2 else t3 }>
+  | ST_If0Zero : forall t2 t3,
+      <{ if0 0 then t2 else t3 }> --> t2
+  | ST_If0Succ : forall (n : nat) t2 t3,
+      tm_if0 (tm_const (S n)) t2 t3 --> t3
+
 where "t '-->' t'" := (step t t').
 
 Notation multistep := (multi step).
@@ -974,7 +1964,16 @@ Hint Constructors step : core.
 
 Example Nat_step_example : exists t,
 <{(\x: Nat, \y: Nat, x * y ) 3 2 }> -->* t.
-Proof. (* FILL IN HERE *) Admitted.
+Proof.
+  exists (tm_const 6).
+  eapply multi_step.
+    { apply ST_App1. apply ST_AppAbs. apply v_nat. }
+  simpl.
+  eapply multi_step.
+    { apply ST_AppAbs. apply v_nat. }
+  simpl.
+  apply multi_R. apply ST_MultConst.
+Qed.
 
 (* Typing *)
 
@@ -983,7 +1982,34 @@ Definition context := partial_map ty.
 Reserved Notation "Gamma '|--' t '\in' T" (at level 101, t custom stlc, T custom stlc at level 0).
 
 Inductive has_type : context -> tm -> ty -> Prop :=
-  (* FILL IN HERE *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      x |-> T2 ; Gamma |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_Const : forall Gamma (n : nat),
+      Gamma |-- n \in Nat
+  | T_Succ : forall Gamma t,
+      Gamma |-- t \in Nat ->
+      Gamma |-- succ t \in Nat
+  | T_Pred : forall Gamma t,
+      Gamma |-- t \in Nat ->
+      Gamma |-- pred t \in Nat
+  | T_Mul : forall Gamma t1 t2,
+      Gamma |-- t1 \in Nat ->
+      Gamma |-- t2 \in Nat ->
+      Gamma |-- t1 * t2 \in Nat
+  | T_If0 : forall t1 t2 t3 T1 Gamma,
+      Gamma |-- t1 \in Nat ->
+      Gamma |-- t2 \in T1 ->
+      Gamma |-- t3 \in T1 ->
+      Gamma |-- if0 t1 then t2 else t3 \in T1
+
 where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
 
 Hint Constructors has_type : core.
@@ -993,7 +2019,12 @@ Hint Constructors has_type : core.
 Example Nat_typing_example :
    empty |-- ( \x: Nat, \y: Nat, x * y ) 3 2 \in Nat.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply T_App with Ty_Nat.
+  - apply T_App with Ty_Nat.
+    + apply T_Abs. apply T_Abs. apply T_Mul; apply T_Var; reflexivity.
+    + apply T_Const.
+  - apply T_Const.
+Qed.
 
 (** [] *)
 
@@ -1007,10 +2038,39 @@ Lemma weakening : forall Gamma Gamma' t T,
      includedin Gamma Gamma' ->
      Gamma  |-- t \in T  ->
      Gamma' |-- t \in T.
-Proof. (* FILL IN HERE *) Admitted.
+Proof.
+  intros Gamma Gamma' t T H Ht. generalize dependent Gamma'.
+  induction Ht; intros Gamma' Hi; eauto.
+  - apply T_Abs. apply IHHt. apply includedin_update. assumption.
+Qed.
 
-(* FILL IN HERE *)
+Lemma weakening_empty : forall Gamma t T,
+  empty |-- t \in T ->
+  Gamma |-- t \in T.
+Proof.
+  intros Gamma t T. apply weakening. discriminate.
+Qed.
 
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+  x |-> U; Gamma |-- t \in T ->
+  empty |-- v \in U ->
+  has_type Gamma (subst x v t) T.
+Proof.
+  intros Gamma x U t v T H Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction H;
+    intros Gamma' G; simpl; subst;
+    try (econstructor; auto).
+  - (* T_Var *) destruct (String.eqb_spec x x0).
+    + subst x0. subst. rewrite update_eq in H. injection H as E. subst U.
+      apply weakening_empty. assumption.
+    + rewrite update_neq in H; [| assumption].
+      apply T_Var. assumption.
+  - (* T_Abs *) destruct (String.eqb_spec x x0).
+    + subst x0. apply T_Abs. rewrite update_shadow in H. assumption.
+    + apply T_Abs. apply IHhas_type. rewrite update_permute; auto.
+Qed.
 (** [] *)
 
 (* Preservation *)
@@ -1021,17 +2081,91 @@ Theorem preservation : forall t t' T,
   empty |-- t \in T  ->
   t --> t'  ->
   empty |-- t' \in T.
-Proof with eauto. (* FILL IN HERE *) Admitted.
-
+Proof.
+  intros t t' T Ht.
+  generalize dependent t'.
+  remember empty as Gamma.
+  induction Ht;
+    intros t' He; subst;
+    try solve [inversion He; subst; auto].
+  - (* T_App *) inversion He; subst.
+    + apply T_App with T2; auto.
+    + apply T_App with T2; auto.
+    + apply substitution_preserves_typing with T2.
+      * inversion Ht1; subst. assumption.
+      * assumption.
+Qed.
 (** [] *)
 
 (* Progress *)
+
+Lemma canonical_forms_nat : forall t,
+  empty |-- t \in Nat ->
+  value t ->
+  exists n, t = tm_const n.
+Proof.
+  intros t Ht Hv. destruct Hv.
+  - exists n. reflexivity.
+  - inversion Ht.
+Qed.
+
+Lemma canonical_forms_fun : forall t T1 T2,
+  empty |-- t \in (T1 -> T2) ->
+  value t ->
+  exists x u, t = <{ \x:T1, u }>.
+Proof.
+  intros t T1 T2 Ht Hv. destruct Hv.
+  - inversion Ht.
+  - exists x0. exists t. inversion Ht; subst. reflexivity.
+Qed.
 
 (** **** Exercise: 4 stars, standard (STLCArith.progress) *)
 Theorem progress : forall t T,
   empty |-- t \in T ->
   value t \/ exists t', t --> t'.
-Proof with eauto. (* FILL IN HERE *) Admitted.
+Proof.
+  intros t T H.
+  remember empty as Gamma. 
+  induction H; subst.
+  - (* T_Var *) discriminate H.
+  - (* T_Abs *) left. apply v_abs.
+  - (* T_App *) right. destruct IHhas_type1 as [Hv1 | [t1' Ht1]].
+    + reflexivity.
+    + destruct IHhas_type2 as [Hv2 | [t2' Ht2]].
+      * reflexivity.
+      * destruct (canonical_forms_fun _ _ _ H Hv1) as [x1 [t11 E]].
+        exists (subst x1 t2 t11). subst t1. apply ST_AppAbs. assumption.
+      * exists <{ t1 t2' }>. apply ST_App2; assumption.
+    + exists <{ t1' t2 }>. apply ST_App1; assumption.
+  - (* T_Const *) left. apply v_nat.
+  - (* T_Succ *) right. destruct IHhas_type as [Hv | [t' Ht]].
+    + reflexivity.
+    + destruct (canonical_forms_nat t H Hv) as [n Et].
+      exists (tm_const (S n)). subst t. apply ST_SuccConst.
+    + exists <{ succ t' }>. apply ST_Succ. assumption.
+  - (* T_Pred *) right. destruct IHhas_type as [Hv | [t' Ht]].
+    + reflexivity.
+    + destruct (canonical_forms_nat t H Hv) as [n Et].
+      exists (tm_const (pred n)). subst t. apply ST_PredConst.
+    + exists <{ pred t' }>. apply ST_Pred. assumption.
+  - (* T_Mul *) right. destruct IHhas_type1 as [Hv1 | [t1' Ht1]].
+    + reflexivity.
+    + destruct IHhas_type2 as [Hv2 | [t2' Ht2]].
+      * reflexivity.
+      * destruct (canonical_forms_nat t1 H Hv1) as [n1 Et1].
+        destruct (canonical_forms_nat t2 H0 Hv2) as [n2 Et2].
+        subst t1 t2. exists (tm_const (n1 * n2)). apply ST_MultConst.
+      * exists <{ t1 * t2' }>. apply ST_Mult2; assumption.
+    + exists <{ t1' * t2 }>. apply ST_Mult1. assumption.
+  - (* T_If0 *) right. destruct IHhas_type1 as [Hv1 | [t1' Ht1]].
+    + reflexivity.
+    + destruct (canonical_forms_nat t1 H Hv1) as [n1 Et1].
+      subst t1. destruct n1.
+      * exists t2. apply ST_If0Zero.
+      * exists t3. apply ST_If0Succ.
+    + exists <{ if0 t1' then t2 else t3 }>. apply ST_If0. assumption.
+Qed.
+
 (** [] *)
 
 End STLCArith.
