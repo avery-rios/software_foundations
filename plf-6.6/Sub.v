@@ -820,6 +820,10 @@ Inductive value : tm -> Prop :=
       value <{false}>
   | v_unit :
       value <{unit}>
+  | v_pair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      value <{ (v1, v2) }>
 .
 
 Hint Constructors value : core.
@@ -844,6 +848,27 @@ Inductive step : tm -> tm -> Prop :=
   | ST_If : forall t1 t1' t2 t3,
       t1 --> t1' ->
       <{if t1 then t2 else t3}> --> <{if t1' then t2 else t3}>
+  | ST_Prod1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ (t1, t2) }> --> <{ (t1', t2) }>
+  | ST_Prod2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ (v1, t2) }> --> <{ (v1, t2') }>
+  | ST_Fst1 : forall t t',
+      t --> t' ->
+      <{ t.fst }> --> <{ t'.fst }>
+  | ST_FstPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).fst }> --> v1
+  | ST_Snd1 : forall t t',
+      t --> t' ->
+      <{ t.snd }> --> <{ t'.snd }>
+  | ST_SndPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).snd }> --> v2
 where "t '-->' t'" := (step t t').
 
 Hint Constructors step : core.
@@ -873,6 +898,10 @@ Inductive subtype : ty -> ty -> Prop :=
       T1 <: S1 ->
       S2 <: T2 ->
       <{S1->S2}> <: <{T1->T2}>
+  | S_Prod : forall S1 S2 T1 T2,
+      S1 <: T1 ->
+      S2 <: T2 ->
+      <{S1 * S2}> <: <{T1 * T2}>
 where "T '<:' U" := (subtype T U).
 
 (** Note that we don't need any special rules for base types ([Bool]
@@ -915,24 +944,30 @@ Proof. auto. Qed.
     Student := { name : String ; gpa : Float }
     Employee := { name : String ; ssn : Integer }
 *)
-Definition Person : ty
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
-Definition Student : ty
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
-Definition Employee : ty
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+
+Definition Person : ty := <{String * (Top * Top)}>.
+
+Definition Student : ty := <{String * (Float * Top)}>.
+
+Definition Employee : ty := <{String * (Top * Float)}>.
 
 (** Now use the definition of the subtype relation to prove the following: *)
 
 Example sub_student_person :
   Student <: Person.
 Proof.
-(* FILL IN HERE *) Admitted.
+  apply S_Prod.
+  - apply S_Refl.
+  - apply S_Prod; auto.
+Qed.
 
 Example sub_employee_person :
   Employee <: Person.
 Proof.
-(* FILL IN HERE *) Admitted.
+  apply S_Prod.
+  - apply S_Refl.
+  - apply S_Prod; auto.
+Qed.
 (** [] *)
 
 (** The following facts are mostly easy to prove in Coq.  To get
@@ -943,14 +978,18 @@ Proof.
 Example subtyping_example_1 :
   <{Top->Student}> <:  <{(C->C)->Person}>.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  apply S_Arrow.
+  - apply S_Top.
+  - apply sub_student_person.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (subtyping_example_2) *)
 Example subtyping_example_2 :
   <{Top->Person}> <: <{Person->Top}>.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  apply S_Arrow; apply S_Top.
+Qed.
 (** [] *)
 
 End Examples.
@@ -994,6 +1033,16 @@ Inductive has_type : context -> tm -> ty -> Prop :=
       Gamma |-- t1 \in T1 ->
       T1 <: T2 ->
       Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
 
 where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
 
@@ -1008,24 +1057,50 @@ Import Examples.
 
 (** **** Exercise: 1 star, standard, optional (typing_example_0) *)
 (* empty |-- ((\z:A,z), (\z:B,z)) \in (A->A * B->B) *)
-(* FILL IN HERE
 
-    [] *)
+Example typing_example_0 : empty |-- ((\z:A,z), (\z:B,z)) \in ((A->A) * (B->B)).
+Proof.
+  apply T_Prod.
+  - apply T_Abs. apply T_Var. reflexivity.
+  - apply T_Abs. apply T_Var. reflexivity.
+Qed.
 
 (** **** Exercise: 2 stars, standard, optional (typing_example_1) *)
 (* empty |-- (\x:(Top * B->B), x.snd) ((\z:A,z), (\z:B,z))
          \in B->B *)
-(* FILL IN HERE
 
-    [] *)
+Example typing_example_1 :
+  empty |-- (\x:(Top * (B->B)), x.snd) ((\z:A,z), (\z:B,z)) \in (B->B).
+Proof.
+  apply T_App with <{Top * (B->B)}>.
+  - apply T_Abs. apply T_Snd with Ty_Top. apply T_Var. reflexivity.
+  - apply T_Sub with <{(A->A) * (B->B)}>.
+    + apply T_Prod; (apply T_Abs; apply T_Var; reflexivity).
+    + apply S_Prod.
+      * apply S_Top.
+      * apply S_Refl.
+Qed.
 
 (** **** Exercise: 2 stars, standard, optional (typing_example_2) *)
 (* empty |-- (\z:(C->C)->(Top * B->B), (z (\x:C,x)).snd)
               (\z:C->C, ((\z:A,z), (\z:B,z)))
          \in B->B *)
-(* FILL IN HERE
 
-    [] *)
+Example typing_example_2 :
+  empty |-- (\z:(C->C)->(Top * (B->B)), (z (\x:C,x)).snd)
+              (\z:C->C, ((\z:A,z), (\z:B,z)))
+         \in (B->B).
+Proof.
+  eapply T_App.
+  - apply T_Abs. eapply T_Snd. eapply T_App.
+    + apply T_Var. reflexivity.
+    + apply T_Abs. apply T_Var. reflexivity.
+  - eapply T_Sub.
+    + apply T_Abs. apply T_Prod; (apply T_Abs; apply T_Var; reflexivity).
+    + apply S_Arrow.
+      * apply S_Refl.
+      * apply S_Prod; auto.
+Qed.
 
 End Examples2.
 
@@ -1063,7 +1138,10 @@ Lemma sub_inversion_Bool : forall U,
 Proof with auto.
   intros U Hs.
   remember <{Bool}> as V.
-  (* FILL IN HERE *) Admitted.
+  induction Hs; try discriminate HeqV; subst T.
+  - reflexivity.
+  - intuition congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (sub_inversion_arrow) *)
@@ -1075,7 +1153,18 @@ Proof with eauto.
   intros U V1 V2 Hs.
   remember <{V1->V2}> as V.
   generalize dependent V2. generalize dependent V1.
-  (* FILL IN HERE *) Admitted.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *)
+    destruct (IHHs2 V1 V2 HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Arrow *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed. 
 (** [] *)
 
 (** There are additional _inversion lemmas_ for the other types:
@@ -1090,7 +1179,10 @@ Lemma sub_inversion_Unit : forall U,
 Proof with auto.
   intros U Hs.
   remember <{Unit}> as V.
-  (* FILL IN HERE *) Admitted.
+  induction Hs; try discriminate HeqV.
+  - reflexivity.
+  - subst T. intuition congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (sub_inversion_Base) *)
@@ -1100,7 +1192,10 @@ Lemma sub_inversion_Base : forall U s,
 Proof with auto.
   intros U s Hs.
   remember <{Base s}> as V.
-  (* FILL IN HERE *) Admitted.
+  induction Hs; try discriminate HeqV.
+  - reflexivity.
+  - subst T. intuition congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (sub_inversion_Top) *)
@@ -1110,8 +1205,32 @@ Lemma sub_inversion_Top : forall U,
 Proof with auto.
   intros U Hs.
   remember <{Top}> as V.
-  (* FILL IN HERE *) Admitted.
+  induction Hs; try discriminate HeqV.
+  - reflexivity.
+  - subst S. intuition congruence.
+  - symmetry. assumption.
+Qed.
 (** [] *)
+
+Lemma sub_inversion_Prod : forall U V1 V2,
+  U <: <{ V1 * V2 }> ->
+  exists U1 U2,
+    U = <{ U1 * U2 }> /\ U1 <: V1 /\ U2 <: V2.
+Proof.
+  intros U V1 V2 Hs.
+  remember <{ V1 * V2 }> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *) destruct (IHHs2 _ _ HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Prod *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed.
 
 (* ================================================================= *)
 (** ** Canonical Forms *)
@@ -1147,8 +1266,33 @@ Lemma canonical_forms_of_arrow_types : forall Gamma s T1 T2,
   exists x S1 s2,
      s = <{\x:S1,s2}>.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{T1 -> T2}> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Abs *) injection HeqT as E1 E2. subst T0 T3.
+    exists x. exists T2. exists t1. reflexivity.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv U1 U2 Eu).
+Qed.
 (** [] *)
+
+Lemma canonical_forms_of_Pair : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1 * T2) ->
+  value s ->
+  exists v1 v2, s = <{ (v1, v2) }>.
+Proof.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{ T1 * T2 }> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_Prod in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv _ _ Eu).
+  - (* T_Prod *) injection HeqT as E1 E2. subst T0 T3.
+    exists t1. exists t2. reflexivity.
+Qed.
 
 (** Similarly, the canonical forms of type [Bool] are the constants
     [tm_true] and [tm_false]. *)
@@ -1230,6 +1374,7 @@ Theorem progress : forall t T,
 Proof with eauto.
   intros t T Ht.
   remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
   induction Ht; subst Gamma; auto.
   - (* T_Var *)
     discriminate.
@@ -1253,6 +1398,20 @@ Proof with eauto.
     + apply canonical_forms_of_Bool in Ht1; [|assumption].
       destruct Ht1; subst...
     + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
 Qed.
 
 (* ================================================================= *)
@@ -1320,7 +1479,15 @@ Lemma typing_inversion_var : forall Gamma (x:string) T,
   exists S,
     Gamma x = Some S /\ S <: T.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  intros Gamma x T H.
+  remember (tm_var x) as t.
+  induction H; try discriminate Heqt.
+  - (* T_Var *) inversion Heqt; subst. exists T1. auto.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S [Ex Hs]].
+    exists S. split.
+    + assumption.
+    + apply S_Trans with T1; assumption.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (typing_inversion_app) *)
@@ -1330,7 +1497,18 @@ Lemma typing_inversion_app : forall Gamma t1 t2 T2,
     Gamma |-- t1 \in (T1->T2) /\
     Gamma |-- t2 \in T1.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  intros Gamma t1 t2 T2 H.
+  remember <{ t1 t2 }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_App *) injection Heqt as E1 E2. subst t0 t3.
+    exists T2. auto.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S [Ht1 Ht2]].
+    exists S. split.
+    + eapply T_Sub.
+      * apply Ht1.
+      * apply S_Arrow; auto.
+    + assumption.
+Qed.
 (** [] *)
 
 Lemma typing_inversion_unit : forall Gamma T,
@@ -1340,6 +1518,63 @@ Proof with eauto.
   intros Gamma T Htyp. remember <{ unit }> as tu.
   induction Htyp;
     inversion Heqtu; subst; intros...
+Qed.
+
+Lemma typing_inversion_prod : forall Gamma t1 t2 T,
+  Gamma |-- (t1, t2) \in T ->
+  exists S1 S2,
+    Gamma |-- t1 \in S1 /\
+    Gamma |-- t2 \in S2 /\
+    <{S1 * S2}> <: T.
+Proof.
+  intros Gamma t1 t2 T H.
+  remember <{ (t1, t2) }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht1 [Ht2 Hs]]]].
+    exists S1. exists S2. repeat split.
+    + apply Ht1.
+    + apply Ht2.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E1 E2. subst t0 t3.
+    exists T1. exists T2. auto.
+Qed.
+
+Lemma typing_inversion_fst : forall Gamma t T,
+  Gamma |-- t.fst \in T ->
+  exists S1 S2,
+    Gamma |-- t \in (S1 * S2) /\
+    S1 <: T.
+Proof.
+  intros Gamma t1 T H.
+  remember <{t1.fst}> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht Hs]]].
+    exists S1. exists S2. split.
+    + apply Ht.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E. subst t1.
+    exists T1. exists T2. split.
+    + assumption.
+    + apply S_Refl.
+Qed.
+
+Lemma typing_inversion_snd : forall Gamma t T,
+  Gamma |-- t.snd \in T ->
+  exists S1 S2,
+    Gamma |-- t \in (S1 * S2) /\
+    S2 <: T.
+Proof.
+  intros Gamma t1 T H.
+  remember <{t1.snd}> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht Hs]]].
+    exists S1. exists S2. split.
+    + apply Ht.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E. subst t1.
+    exists T1. exists T2. split.
+    + assumption.
+    + apply S_Refl.
 Qed.
 
 (** The inversion lemmas for typing and for subtyping between arrow
@@ -1357,6 +1592,20 @@ Proof with eauto.
   apply sub_inversion_arrow in Hsub.
   destruct Hsub as [U1 [U2 [Heq [Hsub1 Hsub2]]]].
   injection Heq as Heq; subst...  Qed.
+
+Lemma pair_prod : forall t1 t2 T1 T2,
+  empty |-- (t1, t2) \in (T1 * T2) ->
+  empty |-- t1 \in T1 /\ empty |-- t2 \in T2.
+Proof.
+  intros t1 t2 T1 T2 H.
+  apply typing_inversion_prod in H.
+  destruct H as [S1 [S2 [HtS1 [HtS2 Hs]]]].
+  apply sub_inversion_Prod in Hs. destruct Hs as [U1 [U2 [E [HsU1 HsU2]]]].
+  injection E as E1 E2. subst U1 U2.
+  split.
+  - apply T_Sub with S1; assumption.
+  - apply T_Sub with S2; assumption.
+Qed.
 
 (* ================================================================= *)
 (** ** Weakening *)
@@ -1400,7 +1649,15 @@ Proof.
   remember (x |-> U; Gamma) as Gamma'.
   generalize dependent Gamma.
   induction Ht; intros Gamma' G; simpl; eauto.
- (* FILL IN HERE *) Admitted.
+  - (* T_Var *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + rewrite update_neq in H; [| assumption].
+      apply T_Var. assumption.
+  - (* T_Abs *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. apply T_Abs. rewrite update_shadow in Ht. assumption.
+    + apply T_Abs. apply IHHt. rewrite update_permute; auto.
+Qed.
 
 (* ================================================================= *)
 (** ** Preservation *)
@@ -1478,6 +1735,12 @@ Proof with eauto.
     + (* ST_AppAbs *)
       destruct (abs_arrow _ _ _ _ _ HT1) as [HA1 HA2].
       apply substitution_preserves_typing with T0... 
+  - (* T_Fst *) inversion HE; subst.
+    + apply T_Fst with T2. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+  - (* T_Snd *) inversion HE; subst.
+    + apply T_Snd with T1. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
 Qed.
 
 (* ================================================================= *)
@@ -1562,6 +1825,1700 @@ Qed.
 
 *)
 
+Module Variation1.
+
+Reserved Notation "Gamma '|--' t '\in' T" (at level 40,
+                                          t custom stlc, T custom stlc at level 0).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  (* Pure STLC, same as before: *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      (x |-> T2 ; Gamma) |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_True : forall Gamma,
+       Gamma |-- true \in Bool
+  | T_False : forall Gamma,
+       Gamma |-- false \in Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       Gamma |-- t1 \in Bool ->
+       Gamma |-- t2 \in T1 ->
+       Gamma |-- t3 \in T1 ->
+       Gamma |-- if t1 then t2 else t3 \in T1
+  | T_Unit : forall Gamma,
+      Gamma |-- unit \in Unit
+  (* New rule of subsumption: *)
+  | T_Sub : forall Gamma t1 T1 T2,
+      Gamma |-- t1 \in T1 ->
+      T1 <: T2 ->
+      Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
+  | T_Funny1 : forall Gamma t S1 S2 T1 T2,
+      Gamma |-- t \in (S1 -> S2) ->
+      S1 <: T1 ->
+      T1 <: S1 ->
+      S2 <: T2 ->
+      Gamma |-- t \in (T1 -> T2)
+
+where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
+
+Hint Constructors has_type : core.
+
+Lemma canonical_forms_of_arrow_types : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1->T2) ->
+  value s ->
+  exists x S1 s2,
+     s = <{\x:S1,s2}>.
+Proof with eauto.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{T1 -> T2}> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Abs *) injection HeqT as E1 E2. subst T0 T3.
+    exists x. exists T2. exists t1. reflexivity.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv U1 U2 Eu).
+  - (* T_funny1 *) apply (IHHt Hv S1 S2). reflexivity.
+Qed.
+(** [] *)
+
+Lemma canonical_forms_of_Pair : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1 * T2) ->
+  value s ->
+  exists v1 v2, s = <{ (v1, v2) }>.
+Proof.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{ T1 * T2 }> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_Prod in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv _ _ Eu).
+  - (* T_Prod *) injection HeqT as E1 E2. subst T0 T3.
+    exists t1. exists t2. reflexivity.
+Qed.
+
+Lemma canonical_forms_of_Bool : forall Gamma s,
+  Gamma |-- s \in Bool ->
+  value s ->
+  s = tm_true \/ s = tm_false.
+Proof with eauto.
+  intros Gamma s Hty Hv.
+  remember <{Bool}> as T.
+  induction Hty; try solve_by_invert...
+  - (* T_Sub *)
+    subst. apply sub_inversion_Bool in H. subst...
+Qed.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [x [S1 [s2 H1]]]. subst.
+        exists (<{ [x:=t2]s2 }>)...
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+Lemma typing_inversion_abs : forall Gamma x S1 t2 T,
+     Gamma |-- \x:S1,t2 \in T ->
+     exists S2,
+       <{S1->S2}> <: T
+       /\ (x |-> S1 ; Gamma) |-- t2 \in S2.
+Proof with eauto.
+  intros Gamma x S1 t2 T H.
+  remember <{\x:S1,t2}> as t.
+  induction H;
+    inversion Heqt; subst; intros; try solve_by_invert.
+  - (* T_Abs *)
+    exists T1...
+  - (* T_Sub *)
+    destruct IHhas_type as [S2 [Hsub Hty]]...
+  - (* T_Funny1 *) destruct (IHhas_type H3) as [S3 [Hs Ht]].
+    exists S3. split.
+    + apply (S_Trans _ <{S0 -> S2}> _ Hs). apply S_Arrow; assumption.
+    + assumption.
+Qed.
+
+Lemma typing_inversion_prod : forall Gamma t1 t2 T,
+  Gamma |-- (t1, t2) \in T ->
+  exists S1 S2,
+    Gamma |-- t1 \in S1 /\
+    Gamma |-- t2 \in S2 /\
+    <{S1 * S2}> <: T.
+Proof.
+  intros Gamma t1 t2 T H.
+  remember <{ (t1, t2) }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht1 [Ht2 Hs]]]].
+    exists S1. exists S2. repeat split.
+    + apply Ht1.
+    + apply Ht2.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E1 E2. subst t0 t3.
+    exists T1. exists T2. auto.
+  - (* T_Funny1 *) destruct (IHhas_type Heqt) as [S3 [S4 [_ [_ Hs]]]].
+    apply sub_inversion_arrow in Hs. destruct Hs as [U1 [U2 [E _]]].
+    discriminate E.
+Qed.
+
+Lemma abs_arrow : forall x S1 s2 T1 T2,
+  empty |-- \x:S1,s2 \in (T1->T2) ->
+     T1 <: S1
+  /\ (x |-> S1 ; empty) |-- s2 \in T2.
+Proof with eauto.
+  intros x S1 s2 T1 T2 Hty.
+  apply typing_inversion_abs in Hty.
+  destruct Hty as [S2 [Hsub Hty1]].
+  apply sub_inversion_arrow in Hsub.
+  destruct Hsub as [U1 [U2 [Heq [Hsub1 Hsub2]]]].
+  injection Heq as Heq; subst...  Qed.
+
+Lemma pair_prod : forall t1 t2 T1 T2,
+  empty |-- (t1, t2) \in (T1 * T2) ->
+    empty |-- t1 \in T1 /\ empty |-- t2 \in T2.
+Proof.
+  intros t1 t2 T1 T2 H.
+  apply typing_inversion_prod in H.
+  destruct H as [S1 [S2 [HtS1 [HtS2 Hs]]]].
+  apply sub_inversion_Prod in Hs. destruct Hs as [U1 [U2 [E [HsU1 HsU2]]]].
+  injection E as E1 E2. subst U1 U2.
+  split.
+  - apply T_Sub with S1; assumption.
+  - apply T_Sub with S2; assumption.
+Qed.
+
+Lemma weakening : forall Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     Gamma  |-- t \in T  ->
+     Gamma' |-- t \in T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Corollary weakening_empty : forall Gamma t T,
+     empty |-- t \in T  ->
+     Gamma |-- t \in T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+   (x |-> U ; Gamma) |-- t \in T ->
+   empty |-- v \in U   ->
+   Gamma |-- [x:=v]t \in T.
+Proof.
+  intros Gamma x U t v T Ht Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction Ht; intros Gamma' G; simpl; eauto.
+  - (* T_Var *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + rewrite update_neq in H; [| assumption].
+      apply T_Var. assumption.
+  - (* T_Abs *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. apply T_Abs. rewrite update_shadow in Ht. assumption.
+    + apply T_Abs. apply IHHt. rewrite update_permute; auto.
+Qed.
+
+Theorem preservation : forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; eauto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      destruct (abs_arrow _ _ _ _ _ HT1) as [HA1 HA2].
+      apply substitution_preserves_typing with T0... 
+  - (* T_Fst *) inversion HE; subst.
+    + apply T_Fst with T2. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+  - (* T_Snd *) inversion HE; subst.
+    + apply T_Snd with T1. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+Qed.
+
+End Variation1.
+
+Module Variation2.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         <{(\x:T2, t1) v2}> --> <{ [x:=v2]t1 }>
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         <{t1 t2}> --> <{t1' t2}>
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         <{v1 t2}> --> <{v1  t2'}>
+  | ST_IfTrue : forall t1 t2,
+      <{if true then t1 else t2}> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{if false then t1 else t2}> --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      <{if t1 then t2 else t3}> --> <{if t1' then t2 else t3}>
+  | ST_Prod1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ (t1, t2) }> --> <{ (t1', t2) }>
+  | ST_Prod2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ (v1, t2) }> --> <{ (v1, t2') }>
+  | ST_Fst1 : forall t t',
+      t --> t' ->
+      <{ t.fst }> --> <{ t'.fst }>
+  | ST_FstPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).fst }> --> v1
+  | ST_Snd1 : forall t t',
+      t --> t' ->
+      <{ t.snd }> --> <{ t'.snd }>
+  | ST_SndPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).snd }> --> v2
+  | ST_Funny2 : forall x,
+      <{ unit }> --> <{ \x:Top, x }>
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [x [S1 [s2 H1]]]. subst.
+        exists (<{ [x:=t2]s2 }>)...
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof.
+  intros H.
+  specialize (H tm_unit (tm_abs "x" Ty_Top (tm_var "x")) 
+    Ty_Unit (T_Unit _) (ST_Funny2 _)).
+    apply typing_inversion_abs in H. destruct H as [S2 [Hs _]].
+    apply sub_inversion_Unit in Hs. discriminate Hs.
+Qed.
+
+End Variation2.
+
+Module Variation3.
+
+Reserved Notation "T '<:' U" (at level 40).
+
+Inductive subtype : ty -> ty -> Prop :=
+  | S_Refl : forall T,
+      T <: T
+  | S_Trans : forall S U T,
+      S <: U ->
+      U <: T ->
+      S <: T
+  | S_Top : forall S,
+      S <: <{Top}>
+  | S_Arrow : forall S1 S2 T1 T2,
+      T1 <: S1 ->
+      S2 <: T2 ->
+      <{S1->S2}> <: <{T1->T2}>
+  | S_Prod : forall S1 S2 T1 T2,
+      S1 <: T1 ->
+      S2 <: T2 ->
+      <{S1 * S2}> <: <{T1 * T2}>
+  | S_Funny3 : <{ Unit }> <: <{ Top -> Top }>
+
+where "T '<:' U" := (subtype T U).
+
+Hint Constructors subtype : core.
+
+Reserved Notation "Gamma '|--' t '\in' T" (at level 40,
+                                          t custom stlc, T custom stlc at level 0).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  (* Pure STLC, same as before: *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      (x |-> T2 ; Gamma) |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_True : forall Gamma,
+       Gamma |-- true \in Bool
+  | T_False : forall Gamma,
+       Gamma |-- false \in Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       Gamma |-- t1 \in Bool ->
+       Gamma |-- t2 \in T1 ->
+       Gamma |-- t3 \in T1 ->
+       Gamma |-- if t1 then t2 else t3 \in T1
+  | T_Unit : forall Gamma,
+      Gamma |-- unit \in Unit
+  (* New rule of subsumption: *)
+  | T_Sub : forall Gamma t1 T1 T2,
+      Gamma |-- t1 \in T1 ->
+      T1 <: T2 ->
+      Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
+
+where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
+
+Hint Constructors has_type : core.
+
+Lemma sub_inversion_Bool : forall U,
+     U <: <{Bool}> ->
+     U = <{Bool}>.
+Proof with auto.
+  intros U Hs.
+  remember <{Bool}> as V.
+  induction Hs; try discriminate HeqV; subst T.
+  - reflexivity.
+  - intuition congruence.
+Qed.
+(** [] *)
+
+Lemma sub_inversion_Unit : forall U,
+     U <: <{Unit}> ->
+     U = <{Unit}>.
+Proof with auto.
+  intros U Hs.
+  remember <{Unit}> as V.
+  induction Hs; try discriminate HeqV.
+  - reflexivity.
+  - subst T. intuition congruence.
+Qed.
+(** [] *)
+
+Lemma sub_inversion_arrow : forall U V1 V2,
+     U <: <{V1->V2}> ->
+     U = <{ Unit }> \/
+     exists U1 U2,
+     U = <{U1->U2}> /\ V1 <: U1 /\ U2 <: V2.
+Proof with eauto.
+  intros U V1 V2 Hs.
+  remember <{V1->V2}> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) right. subst T. exists V1. exists V2. auto.
+  - (* S_Trans *)
+    destruct (IHHs2 V1 V2 HeqV) as [Eu | [U1 [U2 [Eu [HsU1 HsU2]]]]].
+    + left. apply sub_inversion_Unit. rewrite Eu in Hs1. apply Hs1.
+    + destruct (IHHs1 _ _ Eu) as [Es | [S1 [S2 [Es [HsS1 HsS2]]]]].
+      * left. assumption.
+      * right. exists S1. exists S2. repeat split.
+         { apply Es. }
+         { apply S_Trans with U1; assumption. }
+         { apply S_Trans with U2; assumption. }
+  - (* S_Arrow *) right. injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+  - (* S_Funny3 *) left. reflexivity.
+Qed.
+(** [] *)
+
+Lemma sub_inversion_Prod : forall U V1 V2,
+  U <: <{ V1 * V2 }> ->
+  exists U1 U2,
+    U = <{ U1 * U2 }> /\ U1 <: V1 /\ U2 <: V2.
+Proof.
+  intros U V1 V2 Hs.
+  remember <{ V1 * V2 }> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *) destruct (IHHs2 _ _ HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Prod *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed.
+
+Theorem not_progress : ~ forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof.
+  intros H.
+  specialize (H <{unit unit}> Ty_Top).
+  assert (Ht : empty |-- unit unit \in Top).
+    { eapply T_App.
+      - eapply (T_Sub _ _ _ _ (T_Unit _)).
+        apply S_Funny3.
+      - apply (T_Sub _ _ _ _ (T_Unit _) (S_Top _)). }
+  specialize (H Ht). destruct H as [H | [t' Ht']].
+  - inversion H.
+  - inversion Ht'; subst; clear Ht'.
+    + inversion H2.
+    + inversion H3.
+Qed.
+
+Lemma typing_inversion_abs : forall Gamma x S1 t2 T,
+     Gamma |-- \x:S1,t2 \in T ->
+     exists S2,
+       <{S1->S2}> <: T
+       /\ (x |-> S1 ; Gamma) |-- t2 \in S2.
+Proof with eauto.
+  intros Gamma x S1 t2 T H.
+  remember <{\x:S1,t2}> as t.
+  induction H;
+    inversion Heqt; subst; intros; try solve_by_invert.
+  - (* T_Abs *)
+    exists T1...
+  - (* T_Sub *)
+    destruct IHhas_type as [S2 [Hsub Hty]]...
+Qed.
+
+Lemma typing_inversion_var : forall Gamma (x:string) T,
+  Gamma |-- x \in T ->
+  exists S,
+    Gamma x = Some S /\ S <: T.
+Proof with eauto.
+  intros Gamma x T H.
+  remember (tm_var x) as t.
+  induction H; try discriminate Heqt.
+  - (* T_Var *) inversion Heqt; subst. exists T1. auto.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S [Ex Hs]].
+    exists S. split.
+    + assumption.
+    + apply S_Trans with T1; assumption.
+Qed.
+(** [] *)
+
+Lemma typing_inversion_prod : forall Gamma t1 t2 T,
+  Gamma |-- (t1, t2) \in T ->
+  exists S1 S2,
+    Gamma |-- t1 \in S1 /\
+    Gamma |-- t2 \in S2 /\
+    <{S1 * S2}> <: T.
+Proof.
+  intros Gamma t1 t2 T H.
+  remember <{ (t1, t2) }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht1 [Ht2 Hs]]]].
+    exists S1. exists S2. repeat split.
+    + apply Ht1.
+    + apply Ht2.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E1 E2. subst t0 t3.
+    exists T1. exists T2. auto.
+Qed.
+
+Lemma abs_arrow : forall x S1 s2 T1 T2,
+  empty |-- \x:S1,s2 \in (T1->T2) ->
+     T1 <: S1
+  /\ (x |-> S1 ; empty) |-- s2 \in T2.
+Proof with eauto.
+  intros x S1 s2 T1 T2 Hty.
+  apply typing_inversion_abs in Hty.
+  destruct Hty as [S2 [Hsub Hty1]].
+  apply sub_inversion_arrow in Hsub.
+  destruct Hsub as [E | [U1 [U2 [Heq [Hsub1 Hsub2]]]]].
+  - discriminate E.
+  - injection Heq as Heq; subst... 
+Qed.
+
+Lemma pair_prod : forall t1 t2 T1 T2,
+  empty |-- (t1, t2) \in (T1 * T2) ->
+    empty |-- t1 \in T1 /\ empty |-- t2 \in T2.
+Proof.
+  intros t1 t2 T1 T2 H.
+  apply typing_inversion_prod in H.
+  destruct H as [S1 [S2 [HtS1 [HtS2 Hs]]]].
+  apply sub_inversion_Prod in Hs. destruct Hs as [U1 [U2 [E [HsU1 HsU2]]]].
+  injection E as E1 E2. subst U1 U2.
+  split.
+  - apply T_Sub with S1; assumption.
+  - apply T_Sub with S2; assumption.
+Qed.
+
+Lemma weakening : forall Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     Gamma  |-- t \in T  ->
+     Gamma' |-- t \in T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Corollary weakening_empty : forall Gamma t T,
+     empty |-- t \in T  ->
+     Gamma |-- t \in T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+   (x |-> U ; Gamma) |-- t \in T ->
+   empty |-- v \in U   ->
+   Gamma |-- [x:=v]t \in T.
+Proof.
+  intros Gamma x U t v T Ht Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction Ht; intros Gamma' G; simpl; eauto.
+  - (* T_Var *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + rewrite update_neq in H; [| assumption].
+      apply T_Var. assumption.
+  - (* T_Abs *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. apply T_Abs. rewrite update_shadow in Ht. assumption.
+    + apply T_Abs. apply IHHt. rewrite update_permute; auto.
+Qed.
+
+Theorem preservation : forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; eauto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      destruct (abs_arrow _ _ _ _ _ HT1) as [HA1 HA2].
+      apply substitution_preserves_typing with T0... 
+  - (* T_Fst *) inversion HE; subst.
+    + apply T_Fst with T2. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+  - (* T_Snd *) inversion HE; subst.
+    + apply T_Snd with T1. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+Qed.
+
+End Variation3.
+
+Module Variation4.
+
+Reserved Notation "T '<:' U" (at level 40).
+
+Inductive subtype : ty -> ty -> Prop :=
+  | S_Refl : forall T,
+      T <: T
+  | S_Trans : forall S U T,
+      S <: U ->
+      U <: T ->
+      S <: T
+  | S_Top : forall S,
+      S <: <{Top}>
+  | S_Arrow : forall S1 S2 T1 T2,
+      T1 <: S1 ->
+      S2 <: T2 ->
+      <{S1->S2}> <: <{T1->T2}>
+  | S_Prod : forall S1 S2 T1 T2,
+      S1 <: T1 ->
+      S2 <: T2 ->
+      <{S1 * S2}> <: <{T1 * T2}>
+  | S_Funny4 : <{Top->Top}> <: <{ Unit }>
+where "T '<:' U" := (subtype T U).
+
+Hint Constructors subtype : core.
+
+Reserved Notation "Gamma '|--' t '\in' T" (at level 40,
+                                          t custom stlc, T custom stlc at level 0).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  (* Pure STLC, same as before: *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      (x |-> T2 ; Gamma) |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_True : forall Gamma,
+       Gamma |-- true \in Bool
+  | T_False : forall Gamma,
+       Gamma |-- false \in Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       Gamma |-- t1 \in Bool ->
+       Gamma |-- t2 \in T1 ->
+       Gamma |-- t3 \in T1 ->
+       Gamma |-- if t1 then t2 else t3 \in T1
+  | T_Unit : forall Gamma,
+      Gamma |-- unit \in Unit
+  (* New rule of subsumption: *)
+  | T_Sub : forall Gamma t1 T1 T2,
+      Gamma |-- t1 \in T1 ->
+      T1 <: T2 ->
+      Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
+
+where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
+
+Hint Constructors has_type : core.
+
+Lemma sub_inversion_Bool : forall U,
+     U <: <{Bool}> ->
+     U = <{Bool}>.
+Proof with auto.
+  intros U Hs.
+  remember <{Bool}> as V.
+  induction Hs; try discriminate HeqV; subst T.
+  - reflexivity.
+  - intuition congruence.
+Qed.
+(** [] *)
+
+Lemma sub_inversion_arrow : forall U V1 V2,
+     U <: <{V1->V2}> ->
+     exists U1 U2,
+     U = <{U1->U2}> /\ V1 <: U1 /\ U2 <: V2.
+Proof with eauto.
+  intros U V1 V2 Hs.
+  remember <{V1->V2}> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *)
+    destruct (IHHs2 V1 V2 HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Arrow *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed. 
+(** [] *)
+
+Lemma sub_inversion_Prod : forall U V1 V2,
+  U <: <{ V1 * V2 }> ->
+  exists U1 U2,
+    U = <{ U1 * U2 }> /\ U1 <: V1 /\ U2 <: V2.
+Proof.
+  intros U V1 V2 Hs.
+  remember <{ V1 * V2 }> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *) destruct (IHHs2 _ _ HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Prod *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed.
+
+Lemma canonical_forms_of_arrow_types : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1->T2) ->
+  value s ->
+  exists x S1 s2,
+     s = <{\x:S1,s2}>.
+Proof with eauto.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{T1 -> T2}> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Abs *) injection HeqT as E1 E2. subst T0 T3.
+    exists x. exists T2. exists t1. reflexivity.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv U1 U2 Eu).
+Qed.
+(** [] *)
+
+Lemma canonical_forms_of_Pair : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1 * T2) ->
+  value s ->
+  exists v1 v2, s = <{ (v1, v2) }>.
+Proof.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{ T1 * T2 }> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_Prod in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv _ _ Eu).
+  - (* T_Prod *) injection HeqT as E1 E2. subst T0 T3.
+    exists t1. exists t2. reflexivity.
+Qed.
+
+Lemma canonical_forms_of_Bool : forall Gamma s,
+  Gamma |-- s \in Bool ->
+  value s ->
+  s = tm_true \/ s = tm_false.
+Proof with eauto.
+  intros Gamma s Hty Hv.
+  remember <{Bool}> as T.
+  induction Hty; try solve_by_invert...
+  - (* T_Sub *)
+    subst. apply sub_inversion_Bool in H. subst...
+Qed.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [x [S1 [s2 H1]]]. subst.
+        exists (<{ [x:=t2]s2 }>)...
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+Lemma typing_inversion_abs : forall Gamma x S1 t2 T,
+     Gamma |-- \x:S1,t2 \in T ->
+     exists S2,
+       <{S1->S2}> <: T
+       /\ (x |-> S1 ; Gamma) |-- t2 \in S2.
+Proof with eauto.
+  intros Gamma x S1 t2 T H.
+  remember <{\x:S1,t2}> as t.
+  induction H;
+    inversion Heqt; subst; intros; try solve_by_invert.
+  - (* T_Abs *)
+    exists T1...
+  - (* T_Sub *)
+    destruct IHhas_type as [S2 [Hsub Hty]]...
+  Qed.
+
+Lemma typing_inversion_prod : forall Gamma t1 t2 T,
+  Gamma |-- (t1, t2) \in T ->
+  exists S1 S2,
+    Gamma |-- t1 \in S1 /\
+    Gamma |-- t2 \in S2 /\
+    <{S1 * S2}> <: T.
+Proof.
+  intros Gamma t1 t2 T H.
+  remember <{ (t1, t2) }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S1 [S2 [Ht1 [Ht2 Hs]]]].
+    exists S1. exists S2. repeat split.
+    + apply Ht1.
+    + apply Ht2.
+    + apply S_Trans with T1; assumption.
+  - (* T_Prod *) injection Heqt as E1 E2. subst t0 t3.
+    exists T1. exists T2. auto.
+Qed.
+
+Lemma abs_arrow : forall x S1 s2 T1 T2,
+  empty |-- \x:S1,s2 \in (T1->T2) ->
+     T1 <: S1
+  /\ (x |-> S1 ; empty) |-- s2 \in T2.
+Proof with eauto.
+  intros x S1 s2 T1 T2 Hty.
+  apply typing_inversion_abs in Hty.
+  destruct Hty as [S2 [Hsub Hty1]].
+  apply sub_inversion_arrow in Hsub.
+  destruct Hsub as [U1 [U2 [Heq [Hsub1 Hsub2]]]].
+  injection Heq as Heq; subst...  Qed.
+
+Lemma pair_prod : forall t1 t2 T1 T2,
+  empty |-- (t1, t2) \in (T1 * T2) ->
+    empty |-- t1 \in T1 /\ empty |-- t2 \in T2.
+Proof.
+  intros t1 t2 T1 T2 H.
+  apply typing_inversion_prod in H.
+  destruct H as [S1 [S2 [HtS1 [HtS2 Hs]]]].
+  apply sub_inversion_Prod in Hs. destruct Hs as [U1 [U2 [E [HsU1 HsU2]]]].
+  injection E as E1 E2. subst U1 U2.
+  split.
+  - apply T_Sub with S1; assumption.
+  - apply T_Sub with S2; assumption.
+Qed.
+
+Lemma weakening : forall Gamma Gamma' t T,
+     includedin Gamma Gamma' ->
+     Gamma  |-- t \in T  ->
+     Gamma' |-- t \in T.
+Proof.
+  intros Gamma Gamma' t T H Ht.
+  generalize dependent Gamma'.
+  induction Ht; eauto using includedin_update.
+Qed.
+
+Corollary weakening_empty : forall Gamma t T,
+     empty |-- t \in T  ->
+     Gamma |-- t \in T.
+Proof.
+  intros Gamma t T.
+  eapply weakening.
+  discriminate.
+Qed.
+
+Lemma substitution_preserves_typing : forall Gamma x U t v T,
+   (x |-> U ; Gamma) |-- t \in T ->
+   empty |-- v \in U   ->
+   Gamma |-- [x:=v]t \in T.
+Proof.
+  intros Gamma x U t v T Ht Hv.
+  remember (x |-> U; Gamma) as Gamma'.
+  generalize dependent Gamma.
+  induction Ht; intros Gamma' G; simpl; eauto.
+  - (* T_Var *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. rewrite update_eq in H. injection H as E. subst T1.
+      apply weakening_empty. assumption.
+    + rewrite update_neq in H; [| assumption].
+      apply T_Var. assumption.
+  - (* T_Abs *) subst Gamma. destruct (String.eqb_spec x x0).
+    + subst x0. apply T_Abs. rewrite update_shadow in Ht. assumption.
+    + apply T_Abs. apply IHHt. rewrite update_permute; auto.
+Qed.
+
+Theorem preservation : forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; eauto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      destruct (abs_arrow _ _ _ _ _ HT1) as [HA1 HA2].
+      apply substitution_preserves_typing with T0... 
+  - (* T_Fst *) inversion HE; subst.
+    + apply T_Fst with T2. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+  - (* T_Snd *) inversion HE; subst.
+    + apply T_Snd with T1. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+Qed.
+
+End Variation4.
+
+Module Variation5.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         <{(\x:T2, t1) v2}> --> <{ [x:=v2]t1 }>
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         <{t1 t2}> --> <{t1' t2}>
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         <{v1 t2}> --> <{v1  t2'}>
+  | ST_IfTrue : forall t1 t2,
+      <{if true then t1 else t2}> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{if false then t1 else t2}> --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      <{if t1 then t2 else t3}> --> <{if t1' then t2 else t3}>
+  | ST_Prod1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ (t1, t2) }> --> <{ (t1', t2) }>
+  | ST_Prod2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ (v1, t2) }> --> <{ (v1, t2') }>
+  | ST_Fst1 : forall t t',
+      t --> t' ->
+      <{ t.fst }> --> <{ t'.fst }>
+  | ST_FstPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).fst }> --> v1
+  | ST_Snd1 : forall t t',
+      t --> t' ->
+      <{ t.snd }> --> <{ t'.snd }>
+  | ST_SndPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).snd }> --> v2
+  | ST_Funny5 : forall t,
+      <{ unit t }> --> <{ t unit }>
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [x [S1 [s2 H1]]]. subst.
+        exists (<{ [x:=t2]s2 }>)...
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+Theorem preservation : forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof with eauto.
+  intros t t' T HT. generalize dependent t'.
+  remember empty as Gamma.
+  induction HT;
+       intros t' HE; subst;
+       try solve [inversion HE; subst; eauto].
+  - (* T_App *)
+    inversion HE; subst...
+    (* Most of the cases are immediate by induction,
+       and [eauto] takes care of them *)
+    + (* ST_AppAbs *)
+      destruct (abs_arrow _ _ _ _ _ HT1) as [HA1 HA2].
+      apply substitution_preserves_typing with T0...
+    + (* ST_Funny5 *) apply typing_inversion_unit in HT1.
+      apply sub_inversion_arrow in HT1. destruct HT1 as [U1 [U2 [E _]]].
+      discriminate E.
+  - (* T_Fst *) inversion HE; subst.
+    + apply T_Fst with T2. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+  - (* T_Snd *) inversion HE; subst.
+    + apply T_Snd with T1. apply IHHT; auto.
+    + destruct (pair_prod _ _ _ _ HT). assumption.
+Qed.
+
+End Variation5.
+
+Module Variation6.
+
+Reserved Notation "t '-->' t'" (at level 40).
+
+Inductive step : tm -> tm -> Prop :=
+  | ST_AppAbs : forall x T2 t1 v2,
+         value v2 ->
+         <{(\x:T2, t1) v2}> --> <{ [x:=v2]t1 }>
+  | ST_App1 : forall t1 t1' t2,
+         t1 --> t1' ->
+         <{t1 t2}> --> <{t1' t2}>
+  | ST_App2 : forall v1 t2 t2',
+         value v1 ->
+         t2 --> t2' ->
+         <{v1 t2}> --> <{v1  t2'}>
+  | ST_IfTrue : forall t1 t2,
+      <{if true then t1 else t2}> --> t1
+  | ST_IfFalse : forall t1 t2,
+      <{if false then t1 else t2}> --> t2
+  | ST_If : forall t1 t1' t2 t3,
+      t1 --> t1' ->
+      <{if t1 then t2 else t3}> --> <{if t1' then t2 else t3}>
+  | ST_Prod1 : forall t1 t1' t2,
+      t1 --> t1' ->
+      <{ (t1, t2) }> --> <{ (t1', t2) }>
+  | ST_Prod2 : forall v1 t2 t2',
+      value v1 ->
+      t2 --> t2' ->
+      <{ (v1, t2) }> --> <{ (v1, t2') }>
+  | ST_Fst1 : forall t t',
+      t --> t' ->
+      <{ t.fst }> --> <{ t'.fst }>
+  | ST_FstPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).fst }> --> v1
+  | ST_Snd1 : forall t t',
+      t --> t' ->
+      <{ t.snd }> --> <{ t'.snd }>
+  | ST_SndPair : forall v1 v2,
+      value v1 ->
+      value v2 ->
+      <{ (v1, v2).snd }> --> v2
+  | ST_Funny5 : forall t,
+      <{ unit t }> --> <{ t unit }>
+where "t '-->' t'" := (step t t').
+
+Hint Constructors step : core.
+
+Reserved Notation "Gamma '|--' t '\in' T" (at level 40,
+                                          t custom stlc, T custom stlc at level 0).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  (* Pure STLC, same as before: *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      (x |-> T2 ; Gamma) |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_True : forall Gamma,
+       Gamma |-- true \in Bool
+  | T_False : forall Gamma,
+       Gamma |-- false \in Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       Gamma |-- t1 \in Bool ->
+       Gamma |-- t2 \in T1 ->
+       Gamma |-- t3 \in T1 ->
+       Gamma |-- if t1 then t2 else t3 \in T1
+  | T_Unit : forall Gamma,
+      Gamma |-- unit \in Unit
+  (* New rule of subsumption: *)
+  | T_Sub : forall Gamma t1 T1 T2,
+      Gamma |-- t1 \in T1 ->
+      T1 <: T2 ->
+      Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
+  | T_Funny6 : empty |-- unit \in (Top -> Top)
+
+where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
+
+Hint Constructors has_type : core.
+
+Lemma canonical_forms_of_arrow_types : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1->T2) ->
+  value s ->
+  s = <{ unit }> \/
+  exists x S1 s2,
+     s = <{\x:S1,s2}>.
+Proof with eauto.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{T1 -> T2}> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Abs *) right. injection HeqT as E1 E2. subst T0 T3.
+    exists x. exists T2. exists t1. reflexivity.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv U1 U2 Eu).
+  - (* T_Funny6 *) left. reflexivity.
+Qed.
+(** [] *)
+
+Lemma canonical_forms_of_Pair : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1 * T2) ->
+  value s ->
+  exists v1 v2, s = <{ (v1, v2) }>.
+Proof.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{ T1 * T2 }> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_Prod in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv _ _ Eu).
+  - (* T_Prod *) injection HeqT as E1 E2. subst T0 T3.
+    exists t1. exists t2. reflexivity.
+Qed.
+
+Lemma canonical_forms_of_Bool : forall Gamma s,
+  Gamma |-- s \in Bool ->
+  value s ->
+  s = tm_true \/ s = tm_false.
+Proof with eauto.
+  intros Gamma s Hty Hv.
+  remember <{Bool}> as T.
+  induction Hty; try solve_by_invert...
+  - (* T_Sub *)
+    subst. apply sub_inversion_Bool in H. subst...
+Qed.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; try subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [Et | [x [S1 [s2 H1]]]].
+          { subst t1. exists <{ t2 unit }>. apply ST_Funny5. }
+          { subst. exists (<{ [x:=t2]s2 }>)... }
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+
+Lemma typing_inversion_abs : forall Gamma x S1 t2 T,
+     Gamma |-- \x:S1,t2 \in T ->
+     exists S2,
+       <{S1->S2}> <: T
+       /\ (x |-> S1 ; Gamma) |-- t2 \in S2.
+Proof with eauto.
+  intros Gamma x S1 t2 T H.
+  remember <{\x:S1,t2}> as t.
+  induction H;
+    inversion Heqt; subst; intros; try solve_by_invert.
+  - (* T_Abs *)
+    exists T1...
+  - (* T_Sub *)
+    destruct IHhas_type as [S2 [Hsub Hty]]...
+Qed.
+
+Lemma typing_inversion_app : forall Gamma t1 t2 T2,
+  Gamma |-- t1 t2 \in T2 ->
+  exists T1,
+    Gamma |-- t1 \in (T1->T2) /\
+    Gamma |-- t2 \in T1.
+Proof with eauto.
+  intros Gamma t1 t2 T2 H.
+  remember <{ t1 t2 }> as t.
+  induction H; try discriminate Heqt.
+  - (* T_App *) injection Heqt as E1 E2. subst t0 t3.
+    exists T2. auto.
+  - (* T_Sub *) destruct (IHhas_type Heqt) as [S [Ht1 Ht2]].
+    exists S. split.
+    + eapply T_Sub.
+      * apply Ht1.
+      * apply S_Arrow; auto.
+    + assumption.
+Qed.
+(** [] *)
+
+Theorem not_preservation : ~ forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof.
+  intros H.
+  remember (tm_app 
+    (tm_abs "x" <{Top->Top}>
+      (tm_abs "y" Ty_Bool
+        (tm_app (tm_var "x") (tm_var "y"))))
+    tm_unit) as t.
+  remember (tm_abs "y" Ty_Bool (tm_app tm_unit (tm_var "y"))) as t'.
+  assert (Ht : empty |-- t \in (Bool->Top)).
+    { subst t. eapply T_App.
+      - apply T_Abs. apply T_Abs. eapply T_App.
+        + apply T_Var. reflexivity.
+        + eapply T_Sub.
+          * apply T_Var. reflexivity.
+          * apply S_Top.
+      - apply T_Funny6. }
+  subst t t'.
+  specialize (H _ _ _ Ht (ST_AppAbs _ _ _ _ v_unit)). simpl in H.
+  clear Ht.
+  apply typing_inversion_abs in H. destruct H as [S2 [_ Ht]].
+  apply typing_inversion_app in Ht. destruct Ht as [T1 [Hu _]].
+
+  remember ("y" |-> <{Bool}>) as Gamma.
+  remember tm_unit as t.
+  remember <{T1->S2}> as T. generalize dependent S2. generalize dependent T1.
+  induction Hu; try discriminate Heqt; intros.
+  - discriminate HeqT.
+  - subst T2. apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Et1 _]]].
+    apply (IHHu HeqGamma Heqt _ _ Et1).
+  - assert (H : None = Some <{ Bool }>).
+      { replace (Some <{Bool}>) with (("y"|-><{Bool}>) "y").
+        - rewrite <- HeqGamma. reflexivity.
+        - reflexivity. }
+    discriminate H.
+Qed.
+
+End Variation6.
+
+Module Variation7.
+
+Reserved Notation "T '<:' U" (at level 40).
+
+Inductive subtype : ty -> ty -> Prop :=
+  | S_Refl : forall T,
+      T <: T
+  | S_Trans : forall S U T,
+      S <: U ->
+      U <: T ->
+      S <: T
+  | S_Top : forall S,
+      S <: <{Top}>
+  | S_Arrow : forall S1 S2 T1 T2,
+      S1 <: T1 ->
+      S2 <: T2 ->
+      <{S1->S2}> <: <{T1->T2}>
+  | S_Prod : forall S1 S2 T1 T2,
+      S1 <: T1 ->
+      S2 <: T2 ->
+      <{S1 * S2}> <: <{T1 * T2}>
+where "T '<:' U" := (subtype T U).
+
+Hint Constructors subtype : core.
+
+Reserved Notation "Gamma '|--' t '\in' T" (at level 40,
+                                          t custom stlc, T custom stlc at level 0).
+
+Inductive has_type : context -> tm -> ty -> Prop :=
+  (* Pure STLC, same as before: *)
+  | T_Var : forall Gamma x T1,
+      Gamma x = Some T1 ->
+      Gamma |-- x \in T1
+  | T_Abs : forall Gamma x T1 T2 t1,
+      (x |-> T2 ; Gamma) |-- t1 \in T1 ->
+      Gamma |-- \x:T2, t1 \in (T2 -> T1)
+  | T_App : forall T1 T2 Gamma t1 t2,
+      Gamma |-- t1 \in (T2 -> T1) ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- t1 t2 \in T1
+  | T_True : forall Gamma,
+       Gamma |-- true \in Bool
+  | T_False : forall Gamma,
+       Gamma |-- false \in Bool
+  | T_If : forall t1 t2 t3 T1 Gamma,
+       Gamma |-- t1 \in Bool ->
+       Gamma |-- t2 \in T1 ->
+       Gamma |-- t3 \in T1 ->
+       Gamma |-- if t1 then t2 else t3 \in T1
+  | T_Unit : forall Gamma,
+      Gamma |-- unit \in Unit
+  (* New rule of subsumption: *)
+  | T_Sub : forall Gamma t1 T1 T2,
+      Gamma |-- t1 \in T1 ->
+      T1 <: T2 ->
+      Gamma |-- t1 \in T2
+  | T_Prod : forall Gamma t1 T1 t2 T2,
+      Gamma |-- t1 \in T1 ->
+      Gamma |-- t2 \in T2 ->
+      Gamma |-- (t1, t2) \in (T1 * T2)
+  | T_Fst : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.fst \in T1
+  | T_Snd : forall Gamma t T1 T2,
+      Gamma |-- t \in (T1 * T2) ->
+      Gamma |-- t.snd \in T2
+
+where "Gamma '|--' t '\in' T" := (has_type Gamma t T).
+
+Hint Constructors has_type : core.
+
+Lemma sub_inversion_Bool : forall U,
+     U <: <{Bool}> ->
+     U = <{Bool}>.
+Proof with auto.
+  intros U Hs.
+  remember <{Bool}> as V.
+  induction Hs; try discriminate HeqV; subst T.
+  - reflexivity.
+  - intuition congruence.
+Qed.
+(** [] *)
+
+Lemma sub_inversion_arrow : forall U V1 V2,
+     U <: <{V1->V2}> ->
+     exists U1 U2,
+     U = <{U1->U2}> /\ U1 <: V1 /\ U2 <: V2.
+Proof with eauto.
+  intros U V1 V2 Hs.
+  remember <{V1->V2}> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *)
+    destruct (IHHs2 V1 V2 HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Arrow *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed. 
+(** [] *)
+
+Lemma sub_inversion_Prod : forall U V1 V2,
+  U <: <{ V1 * V2 }> ->
+  exists U1 U2,
+    U = <{ U1 * U2 }> /\ U1 <: V1 /\ U2 <: V2.
+Proof.
+  intros U V1 V2 Hs.
+  remember <{ V1 * V2 }> as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; try discriminate HeqV.
+  - (* S_Refl *) subst T. exists V1. exists V2. auto.
+  - (* S_Trans *) destruct (IHHs2 _ _ HeqV) as [U1 [U2 [Eu [HsU1 HsU2]]]].
+    destruct (IHHs1 _ _ Eu) as [S1 [S2 [Es [HsS1 HsS2]]]].
+    exists S1. exists S2. repeat split.
+    + apply Es.
+    + apply S_Trans with U1; assumption.
+    + apply S_Trans with U2; assumption.
+  - (* S_Prod *) injection HeqV as E1 E2. subst T1 T2.
+    exists S1. exists S2. auto.
+Qed.
+
+Lemma canonical_forms_of_arrow_types : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1->T2) ->
+  value s ->
+  exists x S1 s2,
+     s = <{\x:S1,s2}>.
+Proof with eauto.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{T1 -> T2}> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Abs *) injection HeqT as E1 E2. subst T0 T3.
+    exists x. exists T2. exists t1. reflexivity.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_arrow in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv U1 U2 Eu).
+Qed.
+(** [] *)
+
+Lemma canonical_forms_of_Pair : forall Gamma s T1 T2,
+  Gamma |-- s \in (T1 * T2) ->
+  value s ->
+  exists v1 v2, s = <{ (v1, v2) }>.
+Proof.
+  intros Gamma s T1 T2 Ht Hv.
+  remember <{ T1 * T2 }> as T.
+  generalize dependent T2. generalize dependent T1.
+  induction Ht; intros; try solve_by_invert.
+  - (* T_Sub *) subst T2.
+    apply sub_inversion_Prod in H. destruct H as [U1 [U2 [Eu _]]].
+    apply (IHHt Hv _ _ Eu).
+  - (* T_Prod *) injection HeqT as E1 E2. subst T0 T3.
+    exists t1. exists t2. reflexivity.
+Qed.
+
+Lemma canonical_forms_of_Bool : forall Gamma s,
+  Gamma |-- s \in Bool ->
+  value s ->
+  s = tm_true \/ s = tm_false.
+Proof with eauto.
+  intros Gamma s Hty Hv.
+  remember <{Bool}> as T.
+  induction Hty; try solve_by_invert...
+  - (* T_Sub *)
+    subst. apply sub_inversion_Bool in H. subst...
+Qed.
+
+Theorem progress : forall t T,
+     empty |-- t \in T ->
+     value t \/ exists t', t --> t'.
+Proof with eauto.
+  intros t T Ht.
+  remember empty as Gamma.
+  assert (E : @empty ty = @empty ty) by reflexivity.
+  induction Ht; subst Gamma; auto.
+  - (* T_Var *)
+    discriminate.
+  - (* T_App *)
+    right.
+    destruct IHHt1; subst...
+    + (* t1 is a value *)
+      destruct IHHt2; subst...
+      * (* t2 is a value *)
+        eapply canonical_forms_of_arrow_types in Ht1; [|assumption].
+        destruct Ht1 as [x [S1 [s2 H1]]]. subst.
+        exists (<{ [x:=t2]s2 }>)...
+      * (* t2 steps *)
+        destruct H0 as [t2' Hstp]. exists <{ t1 t2' }>...
+    + (* t1 steps *)
+      destruct H as [t1' Hstp]. exists <{ t1' t2 }>...
+  - (* T_If *)
+    right.
+    destruct IHHt1.
+    + (* t1 is a value *) eauto.
+    + apply canonical_forms_of_Bool in Ht1; [|assumption].
+      destruct Ht1; subst...
+    + destruct H. rename x into t1'. eauto. 
+  - (* T_Prod *)
+    destruct (IHHt1 E) as [Hv1 | [t1' Ht1']].
+    + destruct (IHHt2 E) as [Hv2 | [t2' Ht2']].
+      * left. apply v_pair; assumption.
+      * right. exists <{ (t1, t2') }>. apply ST_Prod2; assumption.
+    + right. exists <{ (t1', t2) }>. apply ST_Prod1; assumption.
+  - (* T_Fst *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v1. inversion Hv. apply ST_FstPair; assumption.
+    + exists <{ t'.fst }>. apply ST_Fst1. assumption.
+  - (* T_Snd *) right. destruct (IHHt E) as [Hv | [t' Ht']].
+    + destruct (canonical_forms_of_Pair _ _ _ _ Ht Hv) as [v1 [v2 Et]].
+      subst t. exists v2. inversion Hv. apply ST_SndPair; assumption.
+    + exists <{ t'.snd }>. apply ST_Snd1. assumption.
+Qed.
+
+Lemma typing_inversion_unit : forall Gamma T,
+  Gamma |-- unit \in T ->
+    <{Unit}> <: T.
+Proof with eauto.
+  intros Gamma T Htyp. remember <{ unit }> as tu.
+  induction Htyp;
+    inversion Heqtu; subst; intros...
+Qed.
+
+Theorem not_preservation : ~ forall t t' T,
+     empty |-- t \in T  ->
+     t --> t'  ->
+     empty |-- t' \in T.
+Proof.
+  intros H.
+  remember (tm_app
+    (tm_abs "x" Ty_Bool
+      (tm_if (tm_var "x") tm_true tm_false))
+    tm_unit) as t.
+  remember (tm_if tm_unit tm_true tm_false) as t'.
+  assert (Ht : empty |-- t \in Bool).
+    { subst t. eapply T_App.
+      - eapply T_Sub.
+        + apply T_Abs. apply T_If; auto.
+        + apply S_Arrow.
+          * apply S_Top.
+          * apply S_Refl.
+      - eapply T_Sub.
+        + apply T_Unit.
+        + apply S_Top. }
+  subst t t'.
+  specialize (H _ _ _ Ht (ST_AppAbs _ _ _ _ v_unit)).
+  clear Ht. simpl in H.
+
+  remember <{ if unit then true else false }> as t1.
+  induction H; try discriminate Heqt1.
+  - injection Heqt1 as E _ _. subst t1.
+    apply typing_inversion_unit in H.
+    apply sub_inversion_Bool in H. discriminate H.
+  - apply (IHhas_type Heqt1).
+Qed.
+
+End Variation7.
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_variations : option (nat*string) := None.
 (** [] *)
@@ -1627,7 +3584,8 @@ Theorem formal_subtype_instances_tf_1a:
   TF (forall S T U V, S <: T -> U <: V ->
          <{T->S}> <: <{T->S}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. intros S T U V _ _. apply S_Refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1b) *)
@@ -1635,7 +3593,11 @@ Theorem formal_subtype_instances_tf_1b:
   TF (forall S T U V, S <: T -> U <: V ->
          <{Top->U}> <: <{S->Top}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. intros S T U V _ _.
+  apply S_Arrow.
+  - apply S_Top.
+  - apply S_Top.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1c) *)
@@ -1643,7 +3605,12 @@ Theorem formal_subtype_instances_tf_1c:
   TF (forall S T U V, S <: T -> U <: V ->
          <{(C->C)->(A*B)}> <: <{(C->C)->(Top*B)}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. intros _ _ _ _ _ _. apply S_Arrow.
+  - apply S_Refl.
+  - apply S_Prod.
+    * apply S_Top.
+    * apply S_Refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1d) *)
@@ -1651,15 +3618,50 @@ Theorem formal_subtype_instances_tf_1d:
   TF (forall S T U V, S <: T -> U <: V ->
          <{T->(T->U)}> <: <{S->(S->V)}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. intros S T U V Hst Huv. apply S_Arrow.
+  - apply Hst.
+  - apply S_Arrow.
+    + apply Hst.
+    + apply Huv.
+Qed.
 (** [] *)
+
+Lemma top_not_unit : ~ Ty_Top <: Ty_Unit.
+Proof.
+  intros H. apply sub_inversion_Top in H. discriminate H.
+Qed.
+
+Lemma sub_inversion_arrow2 : forall T1 T2 U1 U2,
+  <{T1 -> T2}> <: <{ U1 -> U2 }> ->
+  U1 <: T1 /\ T2 <: U2.
+Proof.
+  intros. apply sub_inversion_arrow in H.
+  destruct H as [S1 [S2 [E [Hs1 Hs2]]]].
+  injection E as E1 E2. subst.
+  split; assumption.
+Qed.
+
+Lemma sub_inversion_Prod2 : forall T1 T2 U1 U2,
+  <{ T1 * T2 }> <: <{ U1 * U2 }> ->
+  T1 <: U1 /\ T2 <: U2.
+Proof.
+  intros. apply sub_inversion_Prod in H.
+  destruct H as [S1 [S2 [E [Hs1 Hs2]]]].
+  injection E as E1 E2. subst.
+  split; assumption.
+Qed.
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1e) *)
 Theorem formal_subtype_instances_tf_1e:
   TF (forall S T U V, S <: T -> U <: V ->
          <{(T->T)->U}> <: <{(S->S)->V}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros H.
+  specialize (H Ty_Unit Ty_Top Ty_Unit Ty_Unit (S_Top _) (S_Refl _)).
+  apply sub_inversion_arrow2 in H. destruct H as [HsU1 _].
+  apply sub_inversion_arrow2 in HsU1. destruct HsU1 as [HsU1 _].
+  apply (top_not_unit HsU1).
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1f) *)
@@ -1667,7 +3669,12 @@ Theorem formal_subtype_instances_tf_1f:
   TF (forall S T U V, S <: T -> U <: V ->
          <{((T->S)->T)->U}> <: <{((S->T)->S)->V}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. intros S T U V Hst Huv. apply S_Arrow.
+  - apply S_Arrow.
+    + apply S_Arrow; apply Hst.
+    + apply Hst.
+  - apply Huv.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (formal_subtype_instances_tf_1g) *)
@@ -1675,7 +3682,11 @@ Theorem formal_subtype_instances_tf_1g:
   TF (forall S T U V, S <: T -> U <: V ->
          <{S*V}> <: <{T*U}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros H.
+  specialize (H Ty_Unit Ty_Unit Ty_Unit Ty_Top (S_Refl _) (S_Top _)).
+  apply sub_inversion_Prod2 in H. destruct H as [_ HsU2].
+  apply (top_not_unit HsU2).
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_instances_tf_2a) *)
@@ -1684,7 +3695,10 @@ Theorem formal_subtype_instances_tf_2a:
          S <: T ->
          <{S->S}> <: <{T->T}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros H. specialize (H Ty_Unit Ty_Top (S_Top _)).
+  apply sub_inversion_arrow2 in H. destruct H as [HsU1 _].
+  apply (top_not_unit HsU1).
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_instances_tf_2b) *)
@@ -1694,7 +3708,14 @@ Theorem formal_subtype_instances_tf_2b:
          exists T,
            S = <{T->T}> /\ T <: A).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros H.
+  specialize (H
+    (Ty_Arrow Ty_Top (Ty_Base "A"))
+    (S_Arrow _ _ _ _ (S_Top _) (S_Refl _))).
+  destruct H as [T [E Hs]].
+  injection E as E1 _. subst T.
+  apply sub_inversion_Top in Hs. discriminate Hs.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_instances_tf_2d)
@@ -1706,7 +3727,15 @@ Theorem formal_subtype_instances_tf_2d:
   TF (exists S,
          S <: <{S->S}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. 
+  assert (H : forall S T, ~ S <: <{T->S}>).
+    { induction S; intros T H;
+        destruct (sub_inversion_arrow _ _ _ H) as [U1 [U2 [E [_ HsU2]]]]; 
+        try discriminate E.
+      - injection E as _ E. subst U2.
+        apply (IHS2 _ HsU2). }
+  intros [S Hs]. apply (H S S Hs).
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_instances_tf_2e) *)
@@ -1714,59 +3743,115 @@ Theorem formal_subtype_instances_tf_2e:
   TF (exists S,
          <{S->S}> <: S).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists Ty_Top. apply S_Top.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfa) *)
 Theorem formal_subtype_concepts_tfa:
   TF (exists T, forall S, S <: T).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists Ty_Top. apply S_Top.
+Qed.
 (** [] *)
+
+Theorem no_min_sub : ~ exists T, forall S, T <: S.
+Proof.
+  intros [T H]. destruct T;
+    try (specialize (H Ty_Unit); apply sub_inversion_Unit in H; discriminate H).
+  - specialize (H Ty_Bool). apply sub_inversion_Bool in H.
+    discriminate H.
+Qed.
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfb) *)
 Theorem formal_subtype_concepts_tfb:
   TF (exists T, forall S, T <: S).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. exact no_min_sub.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfc) *)
 Theorem formal_subtype_concepts_tfc:
   TF (exists T1 T2, forall S1 S2, <{S1*S2}> <: <{T1*T2}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists Ty_Top. exists Ty_Top. intros S1 S2.
+  apply S_Prod; apply S_Top.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfd) *)
 Theorem formal_subtype_concepts_tfd:
   TF (exists T1 T2, forall S1 S2, <{T1*T2}> <: <{S1*S2}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros [T1 [T2 H]].
+  apply no_min_sub.
+  exists T2. intros S. specialize (H T1 S).
+  apply sub_inversion_Prod2 in H. intuition.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfe) *)
 Theorem formal_subtype_concepts_tfe:
   TF (exists T1 T2, forall S1 S2, <{S1->S2}> <: <{T1->T2}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros [T1 [T2 H]].
+  apply no_min_sub.
+  exists T1. intros S. specialize (H S T2).
+  apply sub_inversion_arrow2 in H. intuition.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tff) *)
 Theorem formal_subtype_concepts_tff:
   TF (exists T1 T2, forall S1 S2, <{T1->T2}> <: <{S1->S2}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros [T1 [T2 H]].
+  apply no_min_sub.
+  exists T2. intros S. specialize (H T1 S).
+  apply sub_inversion_arrow2 in H. intuition.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfg) *)
+
+Fixpoint ty_fun1 i :=
+  match i with
+  | 0 => Ty_Top
+  | S n => Ty_Prod Ty_Top (ty_fun1 n)
+  end.
+
+Lemma ty_fun1_inj : forall i j, i <> j -> ty_fun1 i <> ty_fun1 j.
+Proof.
+  induction i; intros j Hne.
+  + destruct j.
+    * exfalso. apply Hne. reflexivity.
+    * discriminate.
+  + destruct j.
+    * discriminate.
+    * rewrite -> PeanoNat.Nat.succ_inj_wd_neg in Hne. apply IHi in Hne.
+      intros H. injection H as H. exact (Hne H).
+Qed.
+
+Lemma ty_fun1_sub : forall i, ty_fun1 (S i) <: ty_fun1 i.
+Proof.
+  induction i.
+  + apply S_Top.
+  + apply S_Prod.
+    * apply S_Refl.
+    * apply IHi.
+Qed.
 
 Theorem formal_subtype_concepts_tfg:
   TF (exists f : nat -> ty,
          (forall i j, i <> j -> f i <> f j) /\
          (forall i, f (S i) <: f i)).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists ty_fun1.
+  split.
+  - exact ty_fun1_inj.
+  - exact ty_fun1_sub.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (formal_subtype_concepts_tfh) *)
@@ -1775,7 +3860,14 @@ Theorem formal_subtype_concepts_tfh:
          (forall i j, i <> j -> f i <> f j) /\
          (forall i, f i <: f (S i))).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists (fun i => Ty_Arrow (ty_fun1 i) Ty_Top).
+  split.
+  - intros i j Hne H. apply ty_fun1_inj in Hne.
+    injection H as H. exact (Hne H).
+  - intros i. apply S_Arrow.
+    + apply ty_fun1_sub.
+    + apply S_Refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (formal_proper_subtypes) *)
@@ -1785,7 +3877,16 @@ Theorem formal_proper_subtypes:
          exists S,
            S <: T /\ S <> T).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  right. intros H.
+  specialize (H (Ty_Arrow Ty_Top Ty_Unit)).
+  destruct H as [S [Hs Hne]].
+  - intros [contra | [[n contra] | contra]]; discriminate contra.
+  - apply sub_inversion_arrow in Hs. destruct Hs as [U1 [U2 [E [HsU1 HsU2]]]].
+    subst S.
+    apply sub_inversion_Top in HsU1. subst U1.
+    apply sub_inversion_Unit in HsU2. subst U2.
+    apply Hne. reflexivity.
+Qed.
 (** [] *)
 
 Definition smallest_largest HT :=
@@ -1804,13 +3905,66 @@ Definition smallest_largest HT :=
   (~(exists TS, forall T, TS <: T <-> HT T) /\
    ~(exists TL, forall T, T <: TL <-> HT T)).
 
+Lemma typing_inv_var : forall Gamma (x:string) T U,
+  Gamma x = Some U ->
+  Gamma |-- x \in T ->
+  U <: T.
+Proof.
+  intros. apply typing_inversion_var in H0.
+  destruct H0 as [S [E Hs]].
+  rewrite E in H. injection H as Eu. subst S. apply Hs.
+Qed.
+
 (** **** Exercise: 3 stars, advanced, optional (formal_small_large_1) *)
 Theorem formal_small_large_1:
   smallest_largest
   (fun T =>
    empty |-- <{(\p:T*Top, p.fst) ((\z:A, z), unit)}> \in <{A->A}>).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists <{A->A}>. exists <{A->A}>. intros T. split.
+  - intros [Haa Ht].
+    apply sub_inversion_arrow in Ht. destruct Ht as [U1 [U2 [E [_ HsU2]]]].
+    subst T.
+    apply sub_inversion_Base in HsU2. subst U2.
+    apply sub_inversion_arrow2 in Haa. destruct Haa as [HsU1 _].
+    apply sub_inversion_Base in HsU1. subst U1.
+
+    eapply T_App.
+    + apply T_Abs. apply T_Fst with Ty_Top. apply T_Var. reflexivity.
+    + apply T_Prod.
+      * apply T_Abs. apply T_Var. reflexivity.
+      * eapply T_Sub; eauto.
+  - intros H. apply and_comm.
+    apply typing_inversion_app in H. destruct H as [T1 [Hl Hr]].
+    apply abs_arrow in Hl. destruct Hl as [HsT1 Hp].
+    apply typing_inversion_fst in Hp. destruct Hp as [S1 [S3 [Hp HsS12]]].
+    eapply typing_inv_var in Hp; [| reflexivity].
+    apply sub_inversion_Prod2 in Hp. destruct Hp as [HsTS1 _]. clear S3.
+
+    assert (HsT : T <: <{ A->A }>).
+      { apply S_Trans with S1.
+        - apply HsTS1.
+        - apply HsS12. }
+    clear HsTS1 S1 HsS12.
+
+    apply typing_inversion_prod in Hr. destruct Hr as [S1 [S2 [Ha [_ HsP]]]].
+    apply typing_inversion_abs in Ha. destruct Ha as [S3 [HsArr Hz]].
+    assert (HsS12 : <{ S1 * S2 }> <: <{ T * Top }>).
+      { eapply S_Trans with T1; assumption. }
+    clear T1 HsT1 HsP.
+    apply sub_inversion_Prod2 in HsS12. destruct HsS12 as [HsS1 _]. clear S2.
+    assert (HsAS3 : <{ A -> S3 }> <: T).
+      { eapply S_Trans with S1; assumption. }
+    clear S1 HsS1 HsArr.
+
+    apply sub_inversion_arrow in HsT. destruct HsT as [U1 [U2 [E [HsU1 HsU2]]]].
+    subst T.
+    apply sub_inversion_arrow2 in HsAS3. destruct HsAS3 as [Ha _].
+    apply sub_inversion_Base in HsU2. subst U2.
+    split.
+    + apply S_Arrow; auto.
+    + apply S_Arrow; auto.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced, optional (formal_small_large_2) *)
@@ -1819,7 +3973,25 @@ Theorem formal_small_large_2:
   (fun T =>
    empty |-- <{(\p:(A->A)*(B->B), p) ((\z:A, z), (\z:B, z))}> \in T).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  assert (H : forall T,
+    (empty |-- <{(\p:(A->A)*(B->B), p) ((\z:A, z), (\z:B, z))}> \in T) <->
+    <{(A->A) * (B->B)}> <: T).
+    { intros T. split.
+      - intros H. apply typing_inversion_app in H. destruct H as [T1 [Hl _]].
+        apply abs_arrow in Hl. destruct Hl as [_ Hp].
+        eapply typing_inv_var in Hp;[|reflexivity].
+        assumption.
+      - intros H. eapply T_App.
+        + apply T_Abs. eapply T_Sub.
+          * apply T_Var. reflexivity.
+          * apply H.
+        + apply T_Prod; apply T_Abs; apply T_Var; reflexivity. }
+  left. exists <{ (A->A) * (B->B)}>. exists Ty_Top. intros T. split.
+  - intros [Hs _]. apply H. assumption.
+  - intros Ht. apply H in Ht. split.
+    + assumption.
+    + apply S_Top.
+Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, advanced, optional (formal_small_large_3) *)
@@ -1828,7 +4000,63 @@ Theorem formal_small_large_3:
   (fun T =>
    (a |-> A) |-- <{(\p:A*T, (p.snd) (p.fst)) (a, \z:A, z)}> \in A).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  assert (H : forall T,
+    ((a |-> A) |-- <{(\p:A*T, (p.snd) (p.fst)) (a, \z:A, z)}> \in A) <->
+    T = <{A->A}>).
+    { intros T. split.
+      - intros H. apply typing_inversion_app in H. destruct H as [T1 [Htl Htr]].
+        
+        apply typing_inversion_prod in Htr. destruct Htr as [S1 [S2 [Htf [Hts HsS12]]]].
+        eapply typing_inv_var in Htf;[|reflexivity].
+        apply typing_inversion_abs in Hts. destruct Hts as [S3 [HsAS3 _]].
+        assert (HsL : <{A * (A->S3)}> <: T1).
+          { eapply S_Trans.
+            - apply S_Prod.
+              + apply Htf.
+              + apply HsAS3.
+            - apply HsS12. }
+        clear S1 S2 Htf HsAS3 HsS12.
+
+        apply typing_inversion_abs in Htl. destruct Htl as [S1 [HsAT Ht]].
+        apply sub_inversion_arrow2 in HsAT. destruct HsAT as [HsT1 HsS1].
+        apply sub_inversion_Base in HsS1. subst S1.
+        assert (HsAAS3 : <{A*(A->S3)}> <: <{A*T}>)
+          by (apply S_Trans with T1; assumption).
+        clear T1 HsT1 HsL.
+        apply sub_inversion_Prod2 in HsAAS3. destruct HsAAS3 as [_ HsAS3].
+
+        apply typing_inversion_app in Ht. destruct Ht as [T2 [Hts _]].
+        apply typing_inversion_snd in Hts. destruct Hts as [S4 [S5 [Hp HsS5]]].
+        eapply typing_inv_var in Hp; [| reflexivity].
+        apply sub_inversion_Prod2 in Hp. destruct Hp as [_ HsT'].
+        assert (HsT : T <: <{ T2 -> A }>)
+          by (apply S_Trans with S5; assumption).
+        clear S4 S5 HsS5 HsT'. 
+
+        apply sub_inversion_arrow in HsT. destruct HsT as [U1 [U2 [E [_ Hs2]]]].
+        subst T.
+        apply sub_inversion_Base in Hs2. subst U2.
+        apply sub_inversion_arrow2 in HsAS3. destruct HsAS3 as [HsU1 _].
+        apply sub_inversion_Base in HsU1. subst U1.
+        reflexivity.
+      - intros E. subst. eapply T_App.
+        + apply T_Abs. eapply T_App.
+          * apply T_Snd with A. apply T_Var. reflexivity.
+          * eapply T_Fst. apply T_Var. reflexivity.
+        + apply T_Prod.
+          * apply T_Var. reflexivity. 
+          * apply T_Abs. apply T_Var. reflexivity. }
+  left. exists <{A->A}>. exists <{A->A}>.
+  intros T. split.
+  - intros [H1 H2].
+    apply H. apply sub_inversion_arrow in H2. destruct H2 as [U1 [U2 [E [_ Hs2]]]].
+    subst T.
+    apply sub_inversion_Base in Hs2. subst U2.
+    apply sub_inversion_arrow2 in H1. destruct H1 as [HsU1 _].
+    apply sub_inversion_Base in HsU1. subst U1.
+    reflexivity.
+  - intros Ht. apply H in Ht. subst T. split; apply S_Refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, advanced, optional (formal_small_large_4) *)
@@ -1838,7 +4066,54 @@ Theorem formal_small_large_4:
    exists S,
      empty |-- <{\p:A*T, (p.snd) (p.fst)}> \in S).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  assert (H: forall T,
+    (exists S, empty |-- <{\p:A*T, (p.snd) (p.fst)}> \in S) <->
+    (exists U, T <: <{A->U}>)).
+    { intros T. split.
+      - intros [S H].
+        apply typing_inversion_abs in H. destruct H as [S1 [_ Hts]].
+        apply typing_inversion_app in Hts. destruct Hts as [S2 [Htf Hts]].
+
+        apply typing_inversion_fst in Hts. destruct Hts as [S3 [S4 [Hp HsS1]]].
+        eapply typing_inv_var in Hp; [| reflexivity].
+        apply sub_inversion_Prod2 in Hp as [HsA' _].
+        assert (HsA : A <: S2)
+          by (apply S_Trans with S3; assumption).
+        clear S3 S4 HsA' HsS1.
+
+        apply typing_inversion_snd in Htf. destruct Htf as [S3 [S4 [Hp HsS4]]].
+        eapply typing_inv_var in Hp; [| reflexivity].
+        apply sub_inversion_Prod2 in Hp as [_ HsT'].
+        assert (HsT : T <: <{ S2 -> S1 }>)
+          by (apply S_Trans with S4; assumption).
+        clear S3 S4 HsT' HsS4.
+
+        apply sub_inversion_arrow in HsT. destruct HsT as [U1 [U2 [E [HsU1 HsU2]]]].
+        subst T. exists S1.
+        apply S_Arrow.
+        + apply S_Trans with S2; assumption.
+        + assumption.
+      - intros [U HsT]. exists <{(A*T)->U}>.
+        apply T_Abs. eapply T_App.
+        + eapply T_Sub.
+          * eapply T_Snd. apply T_Var. reflexivity.
+          * apply HsT.
+        + eapply T_Fst. apply T_Var. reflexivity. }
+  right. right. left.
+  setoid_rewrite H. clear H. split.
+  - intros [Ts Ht].
+    assert (exists U, <{ Top }> <: <{ A->U }>).
+      { apply Ht. apply S_Top. }
+    destruct H. apply sub_inversion_Top in H. discriminate H.
+  - exists <{A->Top}>. intros T. split.
+    + intros H. apply sub_inversion_arrow in H. destruct H as [U1 [U2 [E [HsA HsU2]]]].
+      subst T. exists U2. apply S_Arrow.
+      * apply HsA.
+      * apply S_Refl.
+    + intros [U Hs]. eapply S_Trans.
+      * apply Hs.
+      * apply S_Arrow; auto.
+Qed.
 (** [] *)
 
 Definition smallest P :=
@@ -1851,7 +4126,57 @@ Theorem formal_smallest_1:
    exists S t,
      empty |-- <{ (\x:T, x x) t }> \in S).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  assert (H: forall T,
+    (exists S t, empty |-- <{ (\x:T, x x) t }> \in S) <->
+    (exists U S t, empty |-- t \in T /\ T <: U /\ T = <{U -> S}>)).
+    { intros T. split.
+      - intros [S [t H]].
+        apply typing_inversion_app in H. destruct H as [T1 [Ha Htr]].
+        apply typing_inversion_abs in Ha. destruct Ha as [S1 [HsTS Ht]].
+        apply typing_inversion_app in Ht. destruct Ht as [S2 [Ht1 Ht2]].
+        eapply typing_inv_var in Ht1; [| reflexivity].
+        eapply typing_inv_var in Ht2; [| reflexivity].
+        apply sub_inversion_arrow in Ht1. destruct Ht1 as [U1 [U2 [E [HsU1 HsU2]]]].
+        subst T.
+        exists U1. exists U2. exists t. split; [| split].
+        + apply sub_inversion_arrow2 in HsTS. destruct HsTS as [HsT1 _].
+          eapply T_Sub.
+          * apply Htr.
+          * apply HsT1.
+        + apply S_Trans with S2; assumption.
+        + reflexivity.
+      - intros [U [S [t [Ht [HsT E]]]]]. subst T.
+        exists S. exists t. eapply T_App.
+        + apply T_Abs. eapply T_App.
+          * apply T_Var. reflexivity.
+          * eapply T_Sub.
+              { apply T_Var. reflexivity. }
+              { apply HsT. }
+        + apply Ht. }
+  right. intros [TS Ht].
+  setoid_rewrite H in Ht. clear H.
+  assert (E : exists U S t, empty |-- t \in TS /\ TS <: U /\ TS = <{ U-> S }>).
+    { apply Ht. apply S_Refl. }
+  destruct E as [U [S [t [HtTS [HsTS ETS]]]]]. subst TS.
+  
+  assert (Hu : Ty_Arrow U S <: <{Top->Unit}>).
+    { apply Ht. exists Ty_Top. exists Ty_Unit. exists <{\x:Top, tm_unit}>.
+      split; [| split].
+      - apply T_Abs. apply T_Unit.
+      - apply S_Top.
+      - reflexivity. }
+  assert (Hb : Ty_Arrow U S <: <{Top->Bool}>).
+    { apply Ht. exists Ty_Top. exists Ty_Bool. exists <{\x:Top, true}>.
+      split; [| split].
+      - apply T_Abs. apply T_True.
+      - apply S_Top.
+      - reflexivity. }
+  apply sub_inversion_arrow2 in Hu. destruct Hu as [_ Hu].
+  apply sub_inversion_Unit in Hu. subst S.
+  apply sub_inversion_arrow2 in Hb. destruct Hb as [_ Hb].
+  apply sub_inversion_Bool in Hb.
+  discriminate Hb.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (formal_smallest_2) *)
@@ -1860,7 +4185,19 @@ Theorem formal_smallest_2:
   (fun T =>
    empty |-- <{(\x:Top, x) ((\z:A, z), (\z:B, z))}> \in T).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  left. exists Ty_Top. intros T. split.
+  - intros H. apply sub_inversion_Top in H. subst T.
+    eapply T_App.
+    + apply T_Abs. apply T_Var. reflexivity.
+    + eapply T_Sub.
+      * apply T_Prod; apply T_Abs; apply T_Var; reflexivity.
+      * apply S_Top.
+  - intros H.
+    apply typing_inversion_app in H. destruct H as [T1 [Ht _]].
+    apply abs_arrow in Ht. destruct Ht as [_ Ht].
+    eapply typing_inv_var in Ht; [| reflexivity].
+    apply Ht.
+Qed.
 (** [] *)
 
 End FormalThoughtExercises.
