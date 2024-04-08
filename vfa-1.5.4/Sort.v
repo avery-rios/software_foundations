@@ -174,7 +174,26 @@ Lemma insert_sorted:
   forall a l, sorted l -> sorted (insert a l).
 Proof.
   intros a l S. induction S; simpl.
-  (* FILL IN HERE *) Admitted.
+  - apply sorted_1.
+  - bdestruct (a <=? x).
+    + apply sorted_cons.
+      * assumption.
+      * apply sorted_1.
+    + apply sorted_cons.
+      * lia.
+      * apply sorted_1.
+  - bdestruct (a <=? x).
+    + apply sorted_cons.
+      * assumption.
+      * apply sorted_cons; assumption.
+    + simpl in IHS. bdestruct (a <=? y).
+      * apply sorted_cons.
+          { lia. }
+          { apply IHS. }
+      * apply sorted_cons.
+          { assumption. }
+          { apply IHS. }
+Qed.
 
 (** [] *)
 
@@ -185,8 +204,10 @@ Proof.
 
 Theorem sort_sorted: forall l, sorted (sort l).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction l; simpl.
+  - apply sorted_nil.
+  - apply insert_sorted. apply IHl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (insert_perm) *)
@@ -197,8 +218,14 @@ Proof.
 Lemma insert_perm: forall x l,
     Permutation (x :: l) (insert x l).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros x. induction l; simpl.
+  - apply Permutation_refl.
+  - bdestruct (x <=? a).
+    + apply Permutation_refl.
+    + apply perm_trans with (a :: x :: l).
+        { apply perm_swap. }
+      apply perm_skip. apply IHl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (sort_perm) *)
@@ -207,8 +234,12 @@ Proof.
 
 Theorem sort_perm: forall l, Permutation l (sort l).
 Proof.
-(* FILL IN HERE *) Admitted.
-
+  induction l; simpl.
+  - apply perm_nil.
+  - apply perm_trans with (a :: sort l).
+      { exact (perm_skip _ IHl). }
+    apply insert_perm.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (insertion_sort_correct) *)
@@ -218,7 +249,10 @@ Proof.
 Theorem insertion_sort_correct:
     is_a_sorting_algorithm sort.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  split.
+  - apply sort_perm.
+  - apply sort_sorted.
+Qed.
 
 (** [] *)
 
@@ -234,6 +268,56 @@ Proof.
     But one way to build confidence in a specification is to state it
     in two different ways, then prove they are equivalent. *)
 
+Definition sorted_eq al  := 
+  forall i j iv jv,
+    i <= j ->
+    nth_error al i = Some iv ->
+    nth_error al j = Some jv ->
+    iv <= jv.
+
+Lemma sorted_eq_sorted' : forall al, sorted_eq al -> sorted' al.
+Proof.
+  intros al H i j iv jv Hl.
+  apply H. lia.
+Qed.
+
+Lemma sorted'_sorted_eq : forall al, sorted' al -> sorted_eq al.
+Proof.
+  intros al H i j iv jv Hl Hi Hj.
+  destruct (Nat.eq_dec i j).
+  - rewrite e in Hi. rewrite Hi in Hj. inversion Hj. apply le_n.
+  - apply (H i j); auto. lia.
+Qed.
+
+Lemma sorted_eq_nil : sorted_eq [].
+Proof.
+  intros i j iv jv _ Hi. destruct i; discriminate Hi.
+Qed.
+
+Lemma sorted_eq_1 : forall x, sorted_eq [x].
+Proof.
+  intros x i j iv jv Hl Hi Hj.
+  destruct i; [| destruct i; discriminate Hi].
+  destruct j; [| destruct j; discriminate Hj].
+  inversion Hi. inversion Hj. lia.
+Qed.
+
+Lemma sorted_sorted_eq : forall al, sorted al -> sorted_eq al.
+Proof.
+  intros al Hs. induction Hs.
+  - apply sorted_eq_nil.
+  - apply sorted_eq_1.
+  - intros i j iv jv Hl Hi Hj. destruct i; inversion Hi.
+    + destruct j; inversion Hj.
+      * lia.
+      * subst iv. transitivity y.
+          { assumption. }
+          { apply (IHHs 0 j); auto. lia. }
+      + destruct j.
+        * lia.
+        * apply (IHHs i j); auto. lia.
+Qed.
+
 (** **** Exercise: 4 stars, advanced (sorted_sorted') *)
 Lemma sorted_sorted': forall al, sorted al -> sorted' al.
 
@@ -242,7 +326,8 @@ Lemma sorted_sorted': forall al, sorted al -> sorted' al.
     have to think about how to approach it, and try out one or two
     different ideas.*)
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros al H. exact (sorted_eq_sorted' _ (sorted_sorted_eq _ H)).
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (sorted'_sorted) *)
@@ -251,7 +336,15 @@ Proof.
 (** Here, you can't do induction on the sortedness of the list,
     because [sorted'] is not an inductive predicate. But the proof
     is less tricky than the previous. *)
-(* FILL IN HERE *) Admitted.
+  induction al; simpl; intros Hs.
+  - apply sorted_nil.
+  - destruct al.
+    + apply sorted_1.
+    + apply sorted_cons.
+      * apply (Hs 0 1); auto.
+      * apply IHal. intros i j iv jv Hl Hi Hj.
+        apply (Hs (S i) (S j)); auto. lia.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -277,12 +370,75 @@ Lemma nth_error_insert : forall l a i iv,
     nth_error (insert a l) i = Some iv ->
     a = iv \/ exists i', nth_error l i' = Some iv.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros l a i iv. generalize dependent i.
+  induction l; simpl; intros i Hi.
+  - destruct i.
+    + left. inversion Hi. reflexivity.
+    + simpl in Hi. destruct i; discriminate Hi.
+  - bdestruct (a <=? a0).
+    + destruct i; inversion Hi.
+      * left. reflexivity.
+      * right. exists i. reflexivity.
+    + destruct i; inversion Hi.
+      * right. exists 0. reflexivity.
+      * destruct (IHl _ H1) as [Ha | [i' Hi']].
+          { left. assumption. }
+          { right. exists (S i'). simpl. congruence. }
+Qed.
+
+Lemma sorted_eq_cons : forall a b l,
+  a <= b ->
+  sorted_eq (b :: l) ->
+  sorted_eq (a :: b :: l).
+Proof.
+  intros a b l Hab Hs i j iv jv Hl Hi Hj.
+  destruct i; simpl in *.
+  - injection Hi as Hi; subst iv.
+    destruct j; simpl in *.
+    + injection Hj as Hj; subst jv. apply le_n.
+    + transitivity b.
+      * apply Hab.
+      * apply (Hs 0 j); auto. lia.
+  - destruct j; [lia |]. simpl in Hj.
+    apply (Hs i j); auto. lia.
+Qed.
+
+Lemma sorted_eq_uncons : forall a l, sorted_eq (a :: l) -> sorted_eq l.
+Proof.
+  intros a l H i j iv jv Hl Hi Hj.
+  apply (H (S i) (S j)).
+  - lia.
+  - apply Hi.
+  - apply Hj.
+Qed.
+
+Lemma insert_sorted_eq : forall a l, sorted_eq l -> sorted_eq (insert a l).
+Proof.
+  intros a. induction l; simpl; intros Hs.
+  - apply sorted_eq_1.
+  - bdestruct (a <=? a0).
+    + apply sorted_eq_cons; assumption.
+    + intros i j iv jv Hl Hi Hj.
+      destruct i; simpl in *.
+      * injection Hi as Hi; subst iv.
+        destruct j; simpl in *.
+          { inversion Hj. apply le_n. }
+          { apply nth_error_insert in Hj. destruct Hj as [Ejv | [j' Hj]].
+            - lia.
+            - apply (Hs 0 (S j')); auto. lia. }
+      * destruct j; [lia |]. simpl in Hj.
+        assert (sorted_eq (insert a l))
+          by exact (IHl (sorted_eq_uncons _ _ Hs)).
+        apply (H0 i j); auto. lia.
+Qed.
 
 Lemma insert_sorted':
   forall a l, sorted' l -> sorted' (insert a l).
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros a l H.
+  apply sorted_eq_sorted'. apply insert_sorted_eq.
+  apply sorted'_sorted_eq. apply H.
+Qed.
 (** [] *)
 
 Theorem sort_sorted': forall l, sorted' (sort l).
