@@ -440,6 +440,12 @@ Print Permutation.
 
    YOUR TASK: Add three more properties. Write them here: *)
 
+ (** 
+    - [x] is in [al] if and only if [x] is in [bl]
+    - [Permutation l l]
+    - If [Permutation al bl] and [Permutation bl cl] then [Permutation al cl]
+ *)
+
 (** Now, let's examine all the theorems in the Coq library about
     permutations: *)
 
@@ -534,7 +540,11 @@ Check app_comm_cons.
 Example permut_example: forall (a b: list nat),
   Permutation (5 :: 6 :: a ++ b) ((5 :: b) ++ (6 :: a ++ [])).
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros. simpl. rewrite app_nil_r.
+  apply perm_skip.
+  change (6 :: a ++ b) with ((6::a) ++ b).
+  apply Permutation_app_comm.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (not_a_permutation)
@@ -548,7 +558,10 @@ Check Permutation_length_1_inv.
 Example not_a_permutation:
   ~ Permutation [1;1] [1;2].
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros H. apply Permutation_cons_inv in H.
+  apply Permutation_length_1_inv in H.
+  discriminate H.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -614,7 +627,19 @@ Theorem Forall_perm: forall {A} (f: A -> Prop) al bl,
   Permutation al bl ->
   Forall f al -> Forall f bl.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros A f al bl Hp.
+  induction Hp; intros Hfa.
+  - apply Forall_nil.
+  - inv Hfa. apply Forall_cons.
+    + assumption.
+    + apply IHHp. assumption.
+  - inv Hfa. inv H2. apply Forall_cons.
+    + assumption.
+    + apply Forall_cons.
+      * assumption.
+      * assumption.
+  - exact (IHHp2 (IHHp1 Hfa)).
+Qed.
 (** [] *)
 
 (* ################################################################# *)
