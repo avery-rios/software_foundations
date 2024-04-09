@@ -39,21 +39,25 @@ Definition bag_eqv (b1 b2: bag) : Prop :=
 
 Lemma bag_eqv_refl : forall b, bag_eqv b b.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros b n. reflexivity.
+Qed.
 
 Lemma bag_eqv_sym: forall b1 b2, bag_eqv b1 b2 -> bag_eqv b2 b1. 
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros b1 b2 H n. symmetry. apply H.
+Qed.
 
 Lemma bag_eqv_trans: forall b1 b2 b3, bag_eqv b1 b2 -> bag_eqv b2 b3 -> bag_eqv b1 b3.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros b1 b2 b3 H12 H23 n. rewrite H12. apply H23.
+Qed.
 
 (** The following little lemma is handy in a couple of places. *)
 
 Lemma bag_eqv_cons : forall x b1 b2, bag_eqv b1 b2 -> bag_eqv (x::b1) (x::b2).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros x b1 b2 H12 n. simpl. rewrite H12. reflexivity.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -75,14 +79,27 @@ Definition is_a_sorting_algorithm' (f: list nat -> list nat) :=
 
 Lemma insert_bag: forall x l, bag_eqv (x::l) (insert x l).
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros x. induction l; simpl.
+  - apply bag_eqv_refl.
+  - bdestruct (x <=? a).
+    + apply bag_eqv_refl.
+    + apply bag_eqv_trans with (a :: x :: l).
+      * intros n. simpl. bdestruct (a =? n); bdestruct (x =? n); reflexivity.
+      * apply bag_eqv_cons. apply IHl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (sort_bag)
 
     Now prove that sort preserves bag contents. *)
 Theorem sort_bag: forall l, bag_eqv l (sort l).
-(* FILL IN HERE *) Admitted.
+Proof.
+  induction l; simpl.
+  - intros n. reflexivity.
+  - apply bag_eqv_trans with (a :: sort l).
+    + apply bag_eqv_cons. apply IHl.
+    + apply insert_bag.
+Qed.
 (** [] *)
 
 (** Now we wrap it all up.  *)
@@ -128,7 +145,16 @@ Definition manual_grade_for_permutations_vs_multiset : option (nat*string) := No
 Lemma perm_bag:
   forall al bl : list nat,
    Permutation al bl -> bag_eqv al bl. 
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros al bl Hs. induction Hs; simpl.
+  - intros n. reflexivity.
+  - apply bag_eqv_cons. apply IHHs.
+  - intros n. simpl.
+    destruct (y =? n); destruct (x =? n); reflexivity.
+  - apply bag_eqv_trans with l'.
+    + apply IHHs1.
+    + apply IHHs2.
+Qed.
 (** [] *)
 
 (** The other direction,
@@ -140,7 +166,10 @@ Lemma perm_bag:
 (** **** Exercise: 2 stars, advanced (bag_nil_inv) *)
 Lemma bag_nil_inv : forall b, bag_eqv [] b -> b = []. 
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros b H. destruct b.
+  - reflexivity.
+  - specialize (H n). simpl in H. rewrite Nat.eqb_refl in H. discriminate H.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (bag_cons_inv) *)
@@ -150,21 +179,47 @@ Lemma bag_cons_inv : forall l x n,
       l = l1 ++ x :: l2
       /\ count x (l1 ++ l2) = n.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros l x. induction l; simpl; intros n Hc.
+  - discriminate Hc.
+  - bdestruct (a =? x).
+    + exists []. exists l. split.
+      * rewrite H. reflexivity.
+      * simpl in *. lia.
+    + apply IHl in Hc. destruct Hc as [l1' [l2' [El Hcl]]].
+      exists (a :: l1'). exists l2'. simpl. split.
+      * rewrite <- El. reflexivity.
+      * apply Nat.eqb_neq in H. rewrite H. apply Hcl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, advanced (count_insert_other) *)
 Lemma count_insert_other : forall l1 l2 x y,
     y <> x -> count y (l1 ++ x :: l2) = count y (l1 ++ l2).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros l1 l2 x y Hne. induction l1; simpl.
+  - apply not_eq_sym in Hne. apply Nat.eqb_neq in Hne. rewrite Hne. reflexivity.
+  - rewrite IHl1. reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (bag_perm) *)
 Lemma bag_perm:
   forall al bl, bag_eqv al bl -> Permutation al bl.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros al bl Hc. generalize dependent bl.
+  induction al; intros bl Hc.
+  - apply bag_nil_inv in Hc. rewrite Hc. apply perm_nil.
+  - specialize (Hc a) as Hca. simpl in Hca. rewrite Nat.eqb_refl in Hca.
+    apply bag_cons_inv in Hca. destruct Hca as [lb1 [lb2 [Ebl Hca]]].
+    rewrite Ebl in *. rewrite Permutation_app_comm.
+    simpl. apply perm_skip. rewrite Permutation_app_comm.
+    apply IHal. intros n.
+    bdestruct (n =? a).
+    + rewrite H. symmetry. apply Hca.
+    + rewrite <- (count_insert_other _ _ a n H). rewrite <- Hc.
+      simpl. apply not_eq_sym in H. apply Nat.eqb_neq in H.
+      rewrite H. reflexivity.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
