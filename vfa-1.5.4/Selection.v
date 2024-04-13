@@ -153,8 +153,21 @@ Qed.
 Lemma select_perm: forall x l y r,
     select x l = (y, r) -> Permutation (x :: l) (y :: r).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros x l. generalize dependent x.
+  induction l; simpl; intros x y r Hs.
+  - injection Hs as Ey Er. subst y r.
+    apply Permutation_refl.
+  - bdestruct (x <=? a).
+    + destruct (select x l) eqn:Es. injection Hs as Ey Er. subst y r.
+      apply (perm_trans (perm_swap a x l)).
+      refine (perm_trans _ (perm_swap n a l0)).
+      apply perm_skip.
+      apply IHl. apply Es.
+    + destruct (select a l) eqn:Es. injection Hs as Ey Er. subst y r.
+      refine (perm_trans _ (perm_swap n x l0)).
+      apply perm_skip.
+      apply IHl. apply Es.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (select_rest_length) *)
@@ -166,8 +179,15 @@ Proof.
 Lemma select_rest_length : forall x l y r,
     select x l = (y, r) -> length l = length r.
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros x l. generalize dependent x.
+  induction l; simpl; intros x y r Hs.
+  - injection Hs as Ey Er. subst y r. reflexivity.
+  - bdestruct (x <=? a).
+    + destruct (select x l) eqn:Es. injection Hs as Ey Er. subst y r.
+      simpl. f_equal. apply (IHl x n _ Es).
+    + destruct (select a l) eqn:Es. injection Hs as Ey Er. subst y r.
+      simpl. f_equal. apply (IHl a n _ Es).
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (selsort_perm) *)
@@ -178,8 +198,18 @@ Proof.
 Lemma selsort_perm: forall n l,
     length l = n -> Permutation l (selsort l n).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction n; intros l El.
+  - destruct l.
+    + simpl. apply perm_nil.
+    + discriminate El.
+  - destruct l; [discriminate El |].
+    simpl. destruct (select n0 l) eqn:Es.
+    apply perm_trans with (n1 :: l0).
+    + apply select_perm. apply Es.
+    + apply perm_skip. apply IHn. simpl in El.
+      apply select_rest_length in Es.
+      congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (selection_sort_perm) *)
@@ -189,8 +219,9 @@ Proof.
 Lemma selection_sort_perm: forall l,
     Permutation l (selection_sort l).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros l. unfold selection_sort.
+  apply selsort_perm. reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (select_fst_leq) *)
@@ -202,8 +233,14 @@ Lemma select_fst_leq: forall al bl x y,
     select x al = (y, bl) ->
     y <= x.
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction al; simpl; intros bl x y Hs.
+  - injection Hs as Ey _. rewrite Ey. apply Nat.le_refl.
+  - bdestruct (x <=? a).
+    + destruct (select x al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply (IHal _ _ _ Es).
+    + destruct (select a al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply IHal in Es. lia.
+Qed.
 (** [] *)
 
 (** To represent the concept of comparing a number to a list, we
@@ -221,8 +258,13 @@ Infix "<=*" := le_all (at level 70, no associativity).
 
 Lemma le_all__le_one : forall lst y n,
     y <=* lst -> In n lst -> y <= n.
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  intros lst y. induction lst; intros n Hl Hi.
+  - inversion Hi.
+  - inversion Hl. subst. clear Hl. destruct Hi.
+    + rewrite <- H. assumption.
+    + apply IHlst; assumption.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (select_smallest) *)
@@ -235,8 +277,24 @@ Lemma select_smallest: forall al bl x y,
     select x al = (y, bl) ->
     y <=* bl.
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  assert (H: forall al bl x y, select x al = (y, bl) -> y <= x /\ y <=* bl).
+    { induction al; simpl; intros bl x y Hs.
+      - injection Hs as Ey Eb. rewrite <- Ey. rewrite <- Eb. split.
+        + apply Nat.le_refl.
+        + apply Forall_nil.
+      - bdestruct (x <=? a).
+        + destruct (select x al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+          apply IHal in Es. destruct Es as [Hnx Hnl].
+          split.
+          * apply Hnx.
+          * apply Forall_cons.
+              { transitivity x; assumption. }
+              { apply Hnl. }
+        + destruct (select a al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+          apply IHal in Es. destruct Es as [Hna Hnl].
+          assert (Hnx: n <= x) by lia. auto. }
+  intros al bl x y Hs. eapply proj2. exact (H al bl x y Hs).
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (select_in) *)
@@ -248,8 +306,18 @@ Lemma select_in : forall al bl x y,
     select x al = (y, bl) ->
     In y (x :: al).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction al; simpl; intros bl x y Hs.
+  - left. injection Hs as E _. apply E.
+  - bdestruct (x <=? a).
+    + destruct (select x al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply IHal in Es. destruct Es as [Hx | Hal].
+      * left. apply Hx.
+      * right. right. apply Hal.
+    + destruct (select a al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply IHal in Es. right. destruct Es as [Ha | Hal].
+      * left. apply Ha.
+      * right. apply Hal.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (cons_of_small_maintains_sort) *)
@@ -265,8 +333,15 @@ Lemma cons_of_small_maintains_sort: forall bl y n,
     sorted (selsort bl n) ->
     sorted (y :: selsort bl n).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros bl y n Hl Hy Hs. destruct (selsort bl n) eqn:Es.
+  - apply sorted_1.
+  - symmetry in Hl. apply selsort_perm in Hl.
+    apply sorted_cons.
+    + apply (le_all__le_one (n0 :: l)).
+      * rewrite <- Es. apply (Permutation_Forall Hl). apply Hy.
+      * left. reflexivity.
+    + apply Hs.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (selsort_sorted) *)
@@ -278,8 +353,20 @@ Proof.
 Lemma selsort_sorted : forall n al,
     length al = n -> sorted (selsort al n).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction n; intros al Hlal; simpl.
+  - destruct al.
+    + apply sorted_nil.
+    + discriminate Hlal.
+  - destruct al; [discriminate Hlal |].
+    simpl in Hlal. injection Hlal as Hlal.
+    destruct (select n0 al) as [a l] eqn:Es.
+    assert (Hll: length l = n).
+      { apply select_rest_length in Es. congruence. }
+    apply cons_of_small_maintains_sort.
+    + symmetry. apply Hll.
+    + exact (select_smallest _ _ _ _ Es).
+    + exact (IHn _ Hll).
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (selection_sort_sorted) *)
@@ -289,7 +376,8 @@ Proof.
 Lemma selection_sort_sorted : forall al,
     sorted (selection_sort al).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros al. unfold selection_sort. apply selsort_sorted. reflexivity.
+Qed.
 
 (** [] *)
 
@@ -300,7 +388,10 @@ Proof.
 Theorem selection_sort_is_correct :
   is_a_sorting_algorithm selection_sort.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  split.
+  - apply selection_sort_perm.
+  - apply selection_sort_sorted.
+Qed.
 
 (** [] *)
 
@@ -375,8 +466,18 @@ Check selsort'_equation.
 Lemma selsort'_perm : forall n l,
     length l = n -> Permutation l (selsort' l).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  induction n; intros l Hl.
+  - destruct l.
+    + rewrite selsort'_equation. apply perm_nil.
+    + discriminate Hl.
+  - rewrite selsort'_equation. destruct l; [discriminate Hl|].
+    destruct (select n0 l) eqn:Es.
+    apply perm_trans with (n1 :: l0).
+    + apply (select_perm _ _ _ _ Es).
+    + apply perm_skip. apply IHn.
+      simpl in Hl. injection Hl as El. apply select_rest_length in Es.
+      congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (cons_of_small_maintains_sort') *)
@@ -389,8 +490,17 @@ Lemma cons_of_small_maintains_sort': forall bl y,
     y <=* bl ->
     sorted (selsort' bl) ->
     sorted (y :: selsort' bl).
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  intros bl y Hy Hs. destruct (selsort' bl) eqn:Es.
+  - apply sorted_1.
+  - assert (Hp : Permutation bl (selsort' bl)).
+      { eapply selsort'_perm. reflexivity. }
+    apply sorted_cons.
+    + apply (le_all__le_one (n :: l)).
+      * rewrite <- Es. apply (Permutation_Forall Hp). apply Hy.
+      * left. reflexivity.
+    + apply Hs.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (selsort'_sorted) *)
@@ -400,8 +510,20 @@ Proof. (* FILL IN HERE *) Admitted.
 
 Lemma selsort'_sorted : forall n al,
     length al = n -> sorted (selsort' al).
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  induction n; intros al Hlal; rewrite selsort'_equation; simpl.
+  - destruct al.
+    + apply sorted_nil.
+    + discriminate Hlal.
+  - destruct al; [discriminate Hlal |].
+    simpl in Hlal. injection Hlal as Hlal.
+    destruct (select n0 al) as [a l] eqn:Es.
+    assert (Hll: length l = n).
+      { apply select_rest_length in Es. congruence. }
+    apply cons_of_small_maintains_sort'.
+    + exact (select_smallest _ _ _ _ Es).
+    + exact (IHn _ Hll).
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard (selsort'_is_correct) *)
@@ -410,8 +532,11 @@ Proof. (* FILL IN HERE *) Admitted.
 
 Theorem selsort'_is_correct :
   is_a_sorting_algorithm selsort'.
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  split.
+  - eapply selsort'_perm. reflexivity.
+  - eapply selsort'_sorted. reflexivity.
+Qed.
 (** [] *)
 
 
@@ -431,8 +556,19 @@ From VFA Require Import Multiset.
 Lemma select_contents : forall al bl x y,
   select x al = (y, bl) ->
   union (singleton x) (contents al) = union (singleton y) (contents bl).
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  induction al; simpl; intros bl x y Hs.
+  - injection Hs as Ey Eb. subst y bl. reflexivity.
+  - bdestruct (x <=? a).
+    + destruct (select x al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply IHal in Es. simpl.
+      rewrite (union_swap (singleton x) (singleton a)).
+      rewrite (union_swap (singleton n) (singleton a)).
+      rewrite Es. reflexivity.
+    + destruct (select a al) eqn:Es. injection Hs as Ey Eb. subst y bl.
+      apply IHal in Es. simpl.
+      rewrite Es. apply union_swap.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (selection_sort_contents) *)
@@ -440,23 +576,45 @@ Proof. (* FILL IN HERE *) Admitted.
 Lemma selection_sort_contents : forall n l,
   length l = n ->
   contents l = contents (selection_sort l).
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  unfold selection_sort.
+  induction n; intros l Hl.
+  - destruct l.
+    + reflexivity.
+    + discriminate Hl.
+  - destruct l; [discriminate Hl|]. simpl in Hl. injection Hl as El. simpl.
+    destruct (select v l) eqn:Es. simpl.
+    rewrite (select_contents _ _ _ _ Es). f_equal.
+    apply select_rest_length in Es. rewrite Es.
+    apply IHn. unfold value in *. congruence.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (sorted_iff_sorted) *)
 
 Lemma sorted_iff_sorted : forall l, sorted l <-> Sort.sorted l.
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  intros l. split.
+  - intros H. induction H.
+    + apply Sort.sorted_nil.
+    + apply Sort.sorted_1.
+    + apply Sort.sorted_cons; assumption.
+  - intros H. induction H.
+    + apply sorted_nil.
+    + apply sorted_1.
+    + apply sorted_cons; assumption.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (selection_sort_correct') *)
 
 Theorem selection_sort_correct' :
   is_a_sorting_algorithm' selection_sort.
-Proof. (* FILL IN HERE *) Admitted.
-
+Proof.
+  split.
+  - eapply selection_sort_contents. reflexivity.
+  - apply sorted_iff_sorted. apply selection_sort_sorted.
+Qed.
 (** [] *)
 
 (* 2023-08-23 11:34 *)
