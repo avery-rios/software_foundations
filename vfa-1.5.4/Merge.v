@@ -161,8 +161,14 @@ Qed.
 Lemma split_perm : forall {X:Type} (l l1 l2: list X),
     split l = (l1,l2) -> Permutation l (l1 ++ l2).
 Proof.
-  induction l as [| x | x1 x2 l1' IHl'] using list_ind2; intros.
-(* FILL IN HERE *) Admitted.
+  induction l as [| x | x1 x2 l1' IHl'] using list_ind2; intros; simpl in H.
+  - injection H as E1 E2. subst. simpl. apply perm_nil.
+  - injection H as E1 E2. subst. simpl. apply Permutation_refl.
+  - destruct (split l1') as [l1t l2t]. injection H as E1 E2. subst.
+    simpl. apply perm_skip.
+    refine (perm_trans _ (Permutation_middle l1t l2t x2)). apply perm_skip.
+    apply IHl'. reflexivity.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -463,7 +469,11 @@ Lemma sorted_merge1 : forall x x1 l1 x2 l2,
     sorted (merge (x1::l1) (x2::l2)) ->
     sorted (x :: merge (x1::l1) (x2::l2)).
 Proof.
-(* FILL IN HERE *) Admitted.
+  simpl. intros x x1 l1 x2 l2 Hlx1 Hlx2 Hs.
+  destruct (x1 <=? x2).
+  - exact (sorted_cons _ _ _ Hlx1 Hs).
+  - exact (sorted_cons _ _ _ Hlx2 Hs).
+Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, standard (sorted_merge) *)
@@ -474,14 +484,41 @@ Proof.
   (* Hint: This is one unusual case where it is _much_ easier to do induction on 
      [l1] rather than on [sorted l1]. You will also need to do
      nested inductions on [l2]. *)
-  (* FILL IN HERE *) Admitted.
+  induction l1 as [| h1 t1 IHt1]; simpl; intros Hs1 l2 Hs2.
+  - destruct l2.
+    + apply sorted_nil.
+    + apply Hs2.
+  - induction l2 as [| h2 t2 IHt2].
+    + apply Hs1.
+    + bdestruct (h1 <=? h2).
+      * destruct t1.
+          { simpl. apply sorted_cons; assumption. }
+          { inversion Hs1. subst. apply sorted_merge1.
+            - assumption.
+            - assumption.
+            - apply IHt1; assumption. }
+      * destruct t2 as [| t2h t2t].
+          { apply sorted_cons.
+            - lia.
+            - exact (IHt2 sorted_nil). }
+          { inversion Hs2. subst. bdestruct (h1 <=? t2h).
+            - apply sorted_cons.
+              + lia.
+              + apply IHt2. assumption.
+            - apply sorted_cons.
+              + assumption.
+              + apply IHt2. assumption. }
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (mergesort_sorts) *)
 Lemma mergesort_sorts: forall l, sorted (mergesort l).
 Proof. 
   apply mergesort_ind; intros. (* Note that we use the special induction principle. *)
-(* FILL IN HERE *) Admitted.
+  - apply sorted_nil.
+  - apply sorted_1.
+  - apply sorted_merge; assumption.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -502,13 +539,29 @@ Lemma merge_perm: forall (l1 l2: list nat),
     Permutation (l1 ++ l2) (merge l1 l2).
 Proof. 
   (* Hint: A nested induction on [l2] is required. *)
-  (* FILL IN HERE *) Admitted.
+  induction l1 as [| h1 t1 IHt1]; intros l2; simpl.
+  - destruct l2; apply Permutation_refl.
+  - induction l2 as [| h2 t2 IHt2].
+    + rewrite app_nil_r. apply Permutation_refl.
+    + destruct (h1 <=? h2).
+      * apply perm_skip. apply IHt1.
+      * change (h1 :: t1 ++ h2 :: t2) with ((h1 :: t1) ++ [h2] ++ t2).
+        apply (perm_trans (Permutation_app_swap_app _ _ _)). simpl.
+        apply perm_skip. apply IHt2.
+Qed.        
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (mergesort_perm) *)
 Lemma mergesort_perm: forall l, Permutation l (mergesort l).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply mergesort_ind; intros.
+  - apply perm_nil.
+  - apply Permutation_refl.
+  - subst _x.
+    apply (perm_trans (split_perm _ _ _ e0)).
+    apply (perm_trans (Permutation_app H H0)).
+    apply merge_perm.
+Qed.
 (** [] *)
 
 (** Putting it all together: *)
