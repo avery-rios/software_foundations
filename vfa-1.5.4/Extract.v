@@ -265,11 +265,50 @@ Hint Constructors sorted : core.
     such as [<=?] refer to [nat] comparisons, so you might need to
     adjust those in your proof. *)
 
+Lemma ins_int_perm: forall x l,
+    Permutation (x :: l) (ins_int x l).
+Proof.
+  intros x. induction l; simpl.
+  - apply Permutation_refl.
+  - bdall.
+    + apply perm_trans with (a :: x :: l).
+        { apply perm_swap. }
+      apply perm_skip. apply IHl.
+Qed.
+
+Lemma ins_int_sorted:
+  forall a l, sorted l -> sorted (ins_int a l).
+Proof.
+  intros a l S. induction S; simpl.
+  - apply sorted_1.
+  - bdall.
+    + apply sorted_cons.
+      * lia.
+      * apply sorted_1.
+  - bdall.
+    + apply sorted_cons.
+      * lia.
+      * apply sorted_cons; assumption.
+    + simpl in IHS. destruct (int_leb_reflect a y).
+      * contradiction.
+      * apply sorted_cons.
+          { assumption. }
+          { apply IHS. }
+Qed.
+
 Theorem sort_int_correct : forall (al : list int),
     Permutation al (sort_int al) /\ sorted (sort_int al).
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  intros al. split.
+  - induction al; simpl.
+    + apply perm_nil.
+    + apply perm_trans with (a :: sort_int al).
+        { exact (perm_skip _ IHal). }
+      apply ins_int_perm.
+  - induction al; simpl.
+    + apply sorted_nil.
+    + apply ins_int_sorted. apply IHal.
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -323,7 +362,8 @@ Theorem lookup_insert_eq :
   forall (V : Type) (default : V) (t : tree V) (k : key) (v : V),
     lookup default k (insert k v t) = v.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  induction t; intros; bdall.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (lookup_insert_neq) *)
@@ -331,7 +371,10 @@ Theorem lookup_insert_neq :
   forall (V : Type) (default : V) (t : tree V) (k k' : key) (v : V),
     k <> k' -> lookup default k' (insert k v t) = lookup default k' t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  induction t; intros; bdall.
+  - exfalso. apply H. apply Abs_inj. lia.
+  - exfalso. apply H. apply Abs_inj. lia.
+Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, standard, optional (int_elements) *)
