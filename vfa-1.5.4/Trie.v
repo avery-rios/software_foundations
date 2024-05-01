@@ -227,7 +227,11 @@ Definition add (x y: positive) : positive := addc false x y.
 Lemma succ_correct: forall p,
    positive2nat (succ p) = S (positive2nat p).
 Proof.
-(* FILL IN HERE *) Admitted.
+  induction p; simpl.
+  - rewrite Nat.add_0_r. rewrite IHp. lia.
+  - reflexivity.
+  - reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (addc_correct)
@@ -244,7 +248,15 @@ Lemma addc_correct: forall (c: bool) (p q: positive),
    positive2nat (addc c p q) =
         (if c then 1 else 0) + positive2nat p + positive2nat q.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros c p. generalize dependent c.
+  induction p; intros c q; simpl.
+  - destruct c; destruct q; simpl;
+      try rewrite IHp; try rewrite succ_correct; lia.
+  - destruct c; destruct q; simpl;
+      try rewrite IHp; try rewrite succ_correct; lia.
+  - destruct c; destruct q; simpl;
+      try rewrite IHp; try rewrite succ_correct; lia.
+Qed.
 
 Theorem add_correct: forall (p q: positive),
    positive2nat (add p q) = positive2nat p + positive2nat q.
@@ -281,9 +293,16 @@ Fixpoint compare x y {struct x}:=
     | p~1, q~1 => compare p q
     | p~1, q~0 => match compare p q with Lt => Lt | _ => Gt end
     | p~1, xH => Gt
-
-  (* DELETE THIS CASE!  Replace it with cases that actually work. *)
-    | _, _ => Lt
+    | p~0, q~1 =>
+        match compare p q with
+        | Gt => Gt
+        | _ => Lt
+        end
+    | p~0, q~0 => compare p q
+    | p~0, xH => Gt
+    | xH, q~1 => Lt
+    | xH, q~0 => Lt
+    | xH, xH => Eq
   end.
 
 Lemma positive2nat_pos:
@@ -301,8 +320,20 @@ Theorem compare_correct:
   | Gt => positive2nat x > positive2nat y
  end.
 Proof.
-induction x; destruct y; simpl.
-(* FILL IN HERE *) Admitted.
+  induction x; destruct y; simpl.
+  - specialize (IHx y).
+    destruct (compare x y); simpl; lia.
+  - specialize (IHx y).
+    destruct (compare x y); lia.
+  - specialize (positive2nat_pos x) as H.
+    lia.
+  - specialize (IHx y). destruct (compare x y); lia.
+  - specialize (IHx y). destruct (compare x y); lia.
+  - specialize (positive2nat_pos x) as H. lia.
+  - specialize (positive2nat_pos y) as H. lia.
+  - specialize (positive2nat_pos y) as H. lia.
+  - reflexivity.
+Qed.
 (** [] *)
 
 (** Claim: [compare x y] takes time proportional to the log base 2 of [x].
@@ -543,7 +574,9 @@ Definition manual_grade_for_successor_of_Z_constant_time : option (nat*string) :
 (** **** Exercise: 1 star, standard (look_leaf) *)
 Lemma look_leaf:
  forall A (a:A) j, look a j Leaf = a.
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros A a j. destruct j; reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (look_ins_same)
@@ -551,7 +584,12 @@ Lemma look_leaf:
     This is a rather simple induction. *)
 
 Lemma look_ins_same: forall {A} a k (v:A) t, look a k (ins a k v t) = v.
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros A a k v. induction k; intros t; simpl.
+  - destruct t; apply IHk.
+  - destruct t; apply IHk.
+  - destruct t; reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (look_ins_same)
@@ -560,7 +598,41 @@ Lemma look_ins_same: forall {A} a k (v:A) t, look a k (ins a k v t) = v.
 
 Lemma look_ins_other: forall {A} a j k (v:A) t,
    j <> k -> look a j (ins a k v t) = look a j t.
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros A a j k v t.
+  generalize dependent k. generalize dependent j.
+  induction t.
+  - induction j; intros k H.
+    + destruct k; simpl.
+      * rewrite IHj.
+          { apply look_leaf. }
+          { lia. }
+      * apply look_leaf.
+      * apply look_leaf.
+    + destruct k; simpl.
+      * apply look_leaf.
+      * rewrite IHj.
+          { apply look_leaf. }
+          { lia. }
+      * apply look_leaf.
+    + destruct k; simpl.
+      * reflexivity.
+      * reflexivity.
+      * exfalso. apply H. reflexivity.
+  - intros. destruct k; simpl.
+    + destruct j; simpl.
+      * apply IHt2. lia.
+      * reflexivity.
+      * reflexivity.
+    + destruct j; simpl.
+      * reflexivity.
+      * apply IHt1. lia.
+      * reflexivity.
+    + destruct j; simpl.
+      * reflexivity.
+      * reflexivity.
+      * exfalso. apply H. reflexivity.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -594,10 +666,17 @@ Qed.
 
 (** **** Exercise: 2 stars, standard (pos2nat_bijective) *)
 Lemma pos2nat_injective: forall p q, pos2nat p = pos2nat q -> p=q.
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros p q H. rewrite <- pos2nat2pos. rewrite <- (pos2nat2pos p).
+  rewrite H. reflexivity.
+Qed.
 
 Lemma nat2pos_injective: forall i j, nat2pos i = nat2pos j -> i=j.
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros i j H.
+  rewrite <- (nat2pos2nat i). rewrite <- (nat2pos2nat j).
+  rewrite H. reflexivity.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -607,8 +686,7 @@ Lemma nat2pos_injective: forall i j, nat2pos i = nat2pos j -> i=j.
     well-formed?  Fill in the simplest thing you can, to start; then
     correct it later as necessary. *)
 
-Definition is_trie {A: Type} (t: trie_table A) : Prop
-(* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition is_trie {A: Type} (t: trie_table A) : Prop := True.
 
 (** Abstraction relation.  This is what we mean by, "what you get is
     what you get."  That is, the abstraction of a [trie_table] is the
@@ -630,11 +708,15 @@ Definition Abs {A: Type} (t: trie_table A) (m: total_map A) :=
     get the [_relate] proofs to work, then you'll need to fix these proofs. *)
 
 Theorem empty_is_trie: forall {A} (default: A), is_trie (empty default).
-(* FILL IN HERE *) Admitted.
+Proof.
+  exact (fun _ _ => I).
+Qed.
 
 Theorem insert_is_trie: forall {A} i x (t: trie_table A),
    is_trie t -> is_trie (insert i x t).
-(* FILL IN HERE *) Admitted.
+Proof.
+  exact (fun _ _ _ _ _ => I).
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (empty_relate)
@@ -646,7 +728,11 @@ Theorem insert_is_trie: forall {A} i x (t: trie_table A),
 Theorem empty_relate: forall {A} (default: A),
     Abs (empty default) (t_empty default).
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros A default. unfold Abs. extensionality n.
+  unfold abstract,empty,lookup. simpl.
+  rewrite look_leaf.
+  unfold t_empty. reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (lookup_relate)
@@ -655,7 +741,10 @@ Proof.
 
 Theorem lookup_relate: forall {A} i (t: trie_table A) m,
     is_trie t -> Abs t m -> lookup i t = m (pos2nat i).
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros A i t m _ Ha. unfold Abs,abstract in Ha.
+  rewrite <- Ha. rewrite pos2nat2pos. reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard (insert_relate)
@@ -671,7 +760,15 @@ Theorem insert_relate: forall {A} k (v: A) t cts,
     is_trie t ->
     Abs t cts ->
     Abs (insert k v t) (t_update cts (pos2nat k) v).
-(* FILL IN HERE *) Admitted.
+Proof.
+  intros A k v t cts _ Ha. unfold Abs,abstract in *. extensionality n.
+  unfold lookup,insert. destruct t. simpl.
+  unfold t_update. bdestruct (pos2nat k =? n).
+  - rewrite <- H. rewrite pos2nat2pos. apply look_ins_same.
+  - rewrite <- Ha. unfold lookup. simpl.
+    apply look_ins_other.
+    intros E. rewrite <- E in H. rewrite nat2pos2nat in H. apply H. reflexivity.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -686,7 +783,7 @@ try (apply insert_relate; [hnf; auto | ]).
 try (apply insert_relate; [hnf; auto | ]).
 try (apply empty_relate).
 (* Change this to Qed once you have [is_trie] defined and working. *)
-(* FILL IN HERE *) Admitted.
+Qed.
 
 (* ################################################################# *)
 (** * Conclusion
