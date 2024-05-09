@@ -281,7 +281,16 @@ Proof.
       as it did in [Sort.v], but using [destruct (le_dec _ _)] instead of
       [bdestruct (_ <=? _)]. *)
 
-(* FILL IN HERE *) Admitted.
+    + apply (sorted_cons _ _ _ Hle). apply sorted_1.
+    + apply not_le in Hgt. apply sorted_cons.
+      * lia.
+      * apply sorted_1.
+  - simpl in *. destruct (le_dec a x).
+    + apply (sorted_cons _ _ _ l0). apply (sorted_cons _ _ _ H H0).
+    + destruct (le_dec a y).
+      * refine (sorted_cons _ _ _ _ IHsorted). lia.
+      * apply (sorted_cons _ _ _ H IHsorted).
+Qed.
 (** [] *)
 
 (* ################################################################# *)
@@ -461,14 +470,14 @@ Eval compute in if list_nat_eq_dec [1;3;4] [1;3;4] then true else false.
 
     Use [in_dec] to build this function. *)
 
-Definition list_nat_in: forall (i: nat) (al: list nat), {In i al}+{~ In i al}
- (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition list_nat_in: forall (i: nat) (al: list nat), {In i al}+{~ In i al} :=
+  in_dec eq_nat_dec.
 
 Example in_4_pi:  (if list_nat_in 4  [3;1;4;1;5;9;2;6] then true else false) = true.
 Proof.
 simpl.
-(* reflexivity. *)
-(* FILL IN HERE *) Admitted.
+ reflexivity.
+Qed.
 (** [] *)
 
 (** In general, beyond [list_eq_dec] and [in_dec], one can construct a
